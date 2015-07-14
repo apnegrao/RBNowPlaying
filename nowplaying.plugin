@@ -1,0 +1,9 @@
+[Plugin]
+Loader=python3
+Module=nowplaying
+IAge=2
+Depends=rb
+Name=Now Playing Playlist
+Description=Winamp style Now Playing playlist. Items can be added to the list automatically (when the user double clicks on a song) or manually. Items are not removed from the playlist after playing.
+Authors = apnegrao
+Website=http://github.com/apnegrao
