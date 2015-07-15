@@ -27,7 +27,9 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                         item = Gio.MenuItem()
                         item.set_label("Add to Now Playing")
                         item.set_detailed_action("app.add-to-now-playing")
-                        app.add_plugin_menu_item('browser-popup', 'add-to-now-playing', item)
+                        # FIXME: Commented the next line because there are
+                        # things I need to fix before.                        
+                        #app.add_plugin_menu_item('browser-popup', 'add-to-now-playing', item)
 
                         # Connect to row-inserted and row-deleted signals from "my own" QueryModel
                         # (inherited from GTKTreeModel.
