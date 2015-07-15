@@ -3,7 +3,7 @@
 
 import os
 
-import rb
+import rb, operator
 from gi.repository import RB
 from gi.repository import GObject, Peas, Gtk, Gio, GdkPixbuf
 
@@ -56,6 +56,7 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                                 self.playing_song_changed_callback)
 
                         self.__playing_source = None
+                        self.create_sidebar()
 
         def do_can_rename(self):
                 return False
@@ -83,6 +84,63 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                                 iter = model.get_iter_first()
 
                         self.__activated = False
+
+        def create_sidebar(self):
+                shell = self.props.shell
+                sidebar = self.__sidebar = RB.EntryView.new(
+                        shell.props.db, 
+                        shell.props.shell_player, 
+                        True, True)
+
+                sidebar.set_property("vscrollbar-policy", Gtk.PolicyType.AUTOMATIC)
+                sidebar.set_property("shadow-type", Gtk.ShadowType.NONE)
+                sidebar.get_style_context().add_class("nowplaying-sidebar")
+
+                renderer = Gtk.CellRendererText.new()
+                sidebar_column = Gtk.TreeViewColumn.new()
+                sidebar_column.pack_start(renderer, True)
+                sidebar_column.set_sizing(Gtk.TreeViewColumnSizing.FIXED)
+                sidebar_column.set_expand(True)
+                sidebar_column.set_clickable(False)
+
+                sidebar_column.set_cell_data_func(renderer, self.cell_data_func)
+        
+                sidebar.append_column_custom(
+                        sidebar_column, _("Now Playing"), 
+                        "Title", operator.gt, None)
+                sidebar.set_columns_clickable(False)
+                super(NowPlayingSource,self).setup_entry_view(sidebar)
+                query_model = self.get_property("query-model")
+                sidebar.set_model(query_model)
+                self.get_property("shell").add_widget (
+                        sidebar, RB.ShellUILocation.RIGHT_SIDEBAR, True, True)
+                sidebar.set_visible(True)
+                sidebar.show_all()
+
+	        #/* sync the state of the main entry view and the sidebar */
+	        #g_signal_connect_object (G_OBJECT (rb_source_get_entry_view (RB_SOURCE (source))),
+	        #			 "notify::playing-state",
+	        #			 G_CALLBACK (rb_play_queue_sync_playing_state),
+	        #			 source, 0);
+
+        def cell_data_func(self, sidebar_column, renderer, tree_model, iter, data):
+                db = self.get_property("shell").get_property("db")
+                entry = tree_model.get(iter, 0)[0]
+                title = entry.get_string(RB.RhythmDBPropType.TITLE)
+                #db.entry_get(entry, RB.RhythmDBPropType.TITLE, title)
+                artist = entry.get_string(RB.RhythmDBPropType.ARTIST)
+                #db.entry_get(entry, RB.RhythmDBPropType.ARTIST, artist)
+                album = entry.get_string(RB.RhythmDBPropType.ALBUM)
+                #db.entry_get(entry, RB.RhythmDBPropType.ALBUM, album)
+        	# Translators: format is "<title> from <album> by <artist>"
+                markup = GObject.markup_escape_text(title) + \
+                        "\n<span size=\"smaller\">from <i>" + \
+                        GObject.markup_escape_text(album) \
+                        + "</i>\nby <i>" + GObject.markup_escape_text(artist) \
+                        + "</i></span>"
+                renderer.set_property(
+                        "markup", markup)
+	        #g_object_set (G_OBJECT (renderer), "markup", markup, NULL);
 
 
         #####################################################################
@@ -115,11 +173,15 @@ class NowPlayingSource(RB.StaticPlaylistSource):
         def playing_changed_callback(self, player, playing):
                 print("PLAY STATE CHANGED!")
                 entry_view = super(RB.StaticPlaylistSource, self).get_entry_view()
+                sidebar = self.__sidebar
+                state = None
                 if playing:
-                        entry_view.set_state(RB.EntryViewState.PLAYING)
+                        state = RB.EntryViewState.PLAYING
                 else:
-                        entry_view.set_state(RB.EntryViewState.PAUSED)
-
+                        state = RB.EntryViewState.PAUSED
+                entry_view.set_state(state)
+                sidebar.set_state(state)
+        
         # XXX: This looks overly simplistic, but lets keep it this way for now.
         def source_changed_callback(self, player, new_source):
                 if new_source == None:
