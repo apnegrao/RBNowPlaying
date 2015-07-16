@@ -129,20 +129,14 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 db = self.get_property("shell").get_property("db")
                 entry = tree_model.get(iter, 0)[0]
                 title = entry.get_string(RB.RhythmDBPropType.TITLE)
-                #db.entry_get(entry, RB.RhythmDBPropType.TITLE, title)
                 artist = entry.get_string(RB.RhythmDBPropType.ARTIST)
-                #db.entry_get(entry, RB.RhythmDBPropType.ARTIST, artist)
                 album = entry.get_string(RB.RhythmDBPropType.ALBUM)
-                #db.entry_get(entry, RB.RhythmDBPropType.ALBUM, album)
-        	# Translators: format is "<title> from <album> by <artist>"
-                markup = GObject.markup_escape_text(title) + \
-                        "\n<span size=\"smaller\">from <i>" + \
-                        GObject.markup_escape_text(album) \
-                        + "</i>\nby <i>" + GObject.markup_escape_text(artist) \
-                        + "</i></span>"
+                markup = "<span size=\"smaller\">" + \
+                        "<b>" + GObject.markup_escape_text(title) + "</b>\n" + \
+                        "<i>" + GObject.markup_escape_text(album) + "</i>\n" + \
+                        "<i>" + GObject.markup_escape_text(artist) + "</i></span>"
                 renderer.set_property(
                         "markup", markup)
-	        #g_object_set (G_OBJECT (renderer), "markup", markup, NULL);
 
 
         #####################################################################
