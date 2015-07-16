@@ -178,17 +178,20 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 entry_view.set_state(state)
                 sidebar.set_state(state)
         
-        # XXX: This looks overly simplistic, but lets keep it this way for now.
+        # When a source is selected to play, we intercept that call and replace
+        # the selected source with the NowPlayingSource.
+        # XXX: This is very innefficient.
         def source_changed_callback(self, player, new_source):
                 if new_source == None:
                         print("NO SOURCE SELECTED")
                         return
 
+                print("NEW SOURCE PLAYING: " + new_source.get_property("name"))
+
                 if new_source == self:
                         print("IT'S US!!")
                         return
 
-                print("NEW SOURCE PLAYING")
                 if self.__playing_source: # A source was already selected.
                         # 1st, disconnect from previous source's entry view...
                         self.__playing_source_view.disconnect(
@@ -196,31 +199,31 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                         # ...and property view(s)
                         for prop_view, signal_id in self.__prop_views:
                                 prop_view.disconnect(signal_id)
+                self.__prop_views = []
                 
                 # What if they are the same?
                 if self.__playing_source == new_source:
                         print("SAME SOURCE, DOESNT COUNT")
                 self.__playing_source = new_source
                 self.__playing_source_view = new_source.get_entry_view()
-                # Connect to "entry-activated" for "click to play" actions
-                self.__playing_source_view_signal_id = self.__playing_source_view.connect(
-                                "entry-activated",
-                                self.playing_entry_changed_callback)
+                
                 # FIXME: Should I be using base_query_model instead?
                 query_model = self.props.query_model
                 for treerow in query_model:     # Clear current selection
                         entry, path = list(treerow)
                         self.remove_entry(entry)
-                for treerow in new_source.props.query_model:    # Add new entries
+                for treerow in new_source.props.query_model: # Add new entries
                         entry, path = list(treerow)
                         self.add_entry(entry, -1)
 
-                playing_entry = player.get_playing_entry()
-                res, playing_state = player.get_playing()
+                # Connect to "entry-activated" for "click to play" actions
+                self.__playing_source_view_signal_id = \
+                        self.__playing_source_view.connect(
+                                "entry-activated",
+                                self.playing_entry_changed_callback)
 
                 # Source is RB's LibrarySource
                 shell = self.props.shell
-                self.__prop_views = []
                 if new_source == shell.props.library_source:
                         print("IT'S THE LIB SOURCE!")
                         # Connect to "property-activate"
@@ -229,10 +232,9 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                                 signal_id = prop_view.connect(
                                         "property_activated", 
                                         self.property_activated_callback)
-                        #shell.activate_source(self, 1)
-                        player.set_playing_source(self)
-                        lib_entry_view = new_source.get_entry_view()
-                        lib_entry_view.set_state(RB.EntryViewState.PLAYING)
+                
+                player.set_playing_source(self)
+                self.__playing_source_view.set_state(RB.EntryViewState.PLAYING)
 
                 # Source is a Playlist (Static or Queue).
                 # FIXME: What about Auto?
