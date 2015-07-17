@@ -86,6 +86,7 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                                 iter = model.get_iter_first()
 
                         self.__activated = False
+                        self.__playing_source = None
 
         def create_sidebar(self):
                 shell = self.props.shell
@@ -119,11 +120,12 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 sidebar.set_visible(True)
                 sidebar.show_all()
 
-	        #/* sync the state of the main entry view and the sidebar */
-	        #g_signal_connect_object (G_OBJECT (rb_source_get_entry_view (RB_SOURCE (source))),
-	        #			 "notify::playing-state",
-	        #			 G_CALLBACK (rb_play_queue_sync_playing_state),
-	        #			 source, 0);
+	        # Connect to the "entry-activated" signal of the sidebar
+                sidebar.connect("entry-activated", self.sidebar_entry_activated)
+
+        def sidebar_entry_activated(self, sidebar, selected_entry):
+                player = self.get_property("shell").get_property("shell-player")
+                player.play_entry(selected_entry, self)
 
         def cell_data_func(self, sidebar_column, renderer, tree_model, iter, data):
                 db = self.get_property("shell").get_property("db")
