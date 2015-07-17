@@ -46,15 +46,10 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                                 "playing-source-changed",
                                 self.source_changed_callback)
 
-                        # and "playing-changed"...
+                        # ... and "playing-changed".
                         self.__source_changed_signal_id = shell_player.connect(
                                 "playing-changed",
                                 self.playing_changed_callback)
-
-                        # and "playing-song-changed"...
-                        self.__source_changed_signal_id = shell_player.connect(
-                                "playing-song-changed",
-                                self.playing_song_changed_callback)
 
                         self.__playing_source = None
                         self.create_sidebar()
@@ -181,7 +176,7 @@ class NowPlayingSource(RB.StaticPlaylistSource):
         
         # When a source is selected to play, we intercept that call and replace
         # the selected source with the NowPlayingSource.
-        # XXX: This is very innefficient.
+        # XXX: Replacing is not the most efficient/elegant solution...
         def source_changed_callback(self, player, new_source):
                 if new_source == None:
                         print("NO SOURCE SELECTED")
@@ -193,16 +188,7 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                         print("IT'S US!!")
                         return
 
-                if self.__playing_source: # A source was already selected.
-                        # 1st, disconnect from previous source's entry view...
-                        self.__playing_source_view.disconnect(
-                                 self.__playing_source_view_signal_id)
-                        # ...and property view(s)
-                        for prop_view, signal_id in self.__prop_views:
-                                prop_view.disconnect(signal_id)
-                self.__prop_views = []
-                
-                # What if they are the same?
+                # XXX: What if they are the same?
                 if self.__playing_source == new_source:
                         print("SAME SOURCE, DOESNT COUNT")
                 self.__playing_source = new_source
@@ -217,50 +203,9 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                         entry, path = list(treerow)
                         self.add_entry(entry, -1)
 
-                # Connect to "entry-activated" for "click to play" actions
-                self.__playing_source_view_signal_id = \
-                        self.__playing_source_view.connect(
-                                "entry-activated",
-                                self.playing_entry_changed_callback)
-
-                # Source is RB's LibrarySource
-                shell = self.props.shell
-                if new_source == shell.props.library_source:
-                        print("IT'S THE LIB SOURCE!")
-                        # Connect to "property-activate"
-                        prop_views = new_source.get_property_views()
-                        for prop_view in prop_views:
-                                signal_id = prop_view.connect(
-                                        "property_activated", 
-                                        self.property_activated_callback)
-                
                 player.set_playing_source(self)
                 self.__playing_source_view.set_state(RB.EntryViewState.PLAYING)
 
-                # Source is a Playlist (Static or Queue).
-                # FIXME: What about Auto?
-
-        def property_activated_callback(self, prop_view, name):
-                print("PROPERTY VIEW SELECTED {}".format(name))
-                # FIXME: Should I be using base_query_model instead?
-                query_model = self.props.query_model
-                for treerow in query_model:     # Clear current selection
-                        entry, path = list(treerow)
-                        self.remove_entry(entry)
-                selection = self.__playing_source.props.query_model
-                for treerow in selection:    # Add new entries
-                        #print(treerow)
-                        entry, path = list(treerow)
-                        self.add_entry(entry, -1)
-                #playing_entry = player.get_playing_entry()
-                #res, playing_state = player.get_playing()
-
-        def playing_entry_changed_callback(self, view, playing_entry):
-                print("NEW PLAYING ENTRY")
-
-        def playing_song_changed_callback(self, player, playing):
-                print("PLAYING SONG CHANGED!")
-               
         def add_entries_callback(self, action, data):
                 library_source = self.props.shell.props.library_source
                 selected = library_source.get_entry_view().get_selected_entries()
