@@ -27,13 +27,12 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                         item = Gio.MenuItem()
                         item.set_label("Add to Now Playing")
                         item.set_detailed_action("app.add-to-now-playing")
-                        # FIXME: Commented the next line because there are
-                        # things I need to fix before.                        
-                        #app.add_plugin_menu_item('browser-popup', 'add-to-now-playing', item)
+                        app.add_plugin_menu_item('browser-popup', 
+                                'add-to-now-playing', item)
 
-                        # Connect to row-inserted and row-deleted signals from "my own" QueryModel
-                        # (inherited from GTKTreeModel.
-                        # TODO: Why not listen to entry-added/deleted from RBEntryView?
+                        # Connect to row-inserted and row-deleted signals 
+                        # from "my own" QueryModel.
+                        # TODO: Why not use RBEntryView entry-added/deleted?
                         self.props.base_query_model.connect(
                                 "row-inserted",
                                 self.row_inserted_callback)
