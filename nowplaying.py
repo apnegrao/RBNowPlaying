@@ -52,7 +52,8 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                                         "playing-source-changed",
                                         self.source_changed_callback),
                                 shell_player))
-                # ... and "playing-changed".
+                # ... and "playing-changed". XXX: I prob. should connect to
+                # this signal only after activating the source
                 signals.append((shell_player.connect("playing-changed",
                                         self.playing_changed_callback),
                                 shell_player))
@@ -80,8 +81,11 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 for signal_id, signal_emitter in self.__signals:
                         signal_emitter.disconnect(signal_id)
 
-                # Remove display page
-                shell.props.display_page_model.remove_page(self)
+                # Get the current playing status to use later
+                shell = self.get_property("shell")
+                player = shell.get_property("shell-player")
+                ret, playing = player.get_playing()
+                playing_entry = player.get_playing_entry()
 
                 # Clear query model
                 model = self.props.base_query_model
@@ -92,11 +96,23 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                                 model.remove_entry(entry_to_remove)
                         iter = model.get_iter_first()
 
-                self.__activated = False
-                self.__playing_source = None
                 self.get_property("shell").remove_widget (
                 self.__sidebar, RB.ShellUILocation.RIGHT_SIDEBAR)
                 # TODO: Delete the actual sidebar.
+                # Set the new source and playing entry
+                # XXX: Maybe I should just stop playback and scroll to the
+                # previously playing entry
+                if self.__playing_source:
+                        if ret and playing and playing_entry:
+                                player.play_entry(playing_entry, 
+                                        self.__playing_source)
+
+                # Remove display page
+                shell.props.display_page_model.remove_page(self)
+
+                # TODO: Delete the rest of the fields
+                del self.__playing_source
+                del self.__activated
 
         def create_sidebar(self):
                 shell = self.props.shell
@@ -180,16 +196,17 @@ class NowPlayingSource(RB.StaticPlaylistSource):
         # entry in the NowPlaying source. 
         def playing_changed_callback(self, player, playing):
                 print("PLAY STATE CHANGED!")
+                if not self.__playing_source:
+                        return
                 entry_view = super(RB.StaticPlaylistSource, self).get_entry_view()
-                sidebar = self.__sidebar
                 state = None
                 if playing:
                         state = RB.EntryViewState.PLAYING
                 else:
                         state = RB.EntryViewState.PAUSED
                 entry_view.set_state(state)
-                sidebar.set_state(state)
-                self.__playing_source_view.set_state(state)
+                self.__sidebar.set_state(state)
+                self.__playing_source.get_entry_view().set_state(state)
         
         # When a source is selected to play, we intercept that call and replace
         # the selected source with the NowPlayingSource.
@@ -209,7 +226,7 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 if self.__playing_source == new_source:
                         print("SAME SOURCE, DOESNT COUNT")
                 self.__playing_source = new_source
-                self.__playing_source_view = new_source.get_entry_view()
+                playing_source_view = new_source.get_entry_view()
                 
                 # FIXME: Should I be using base_query_model instead?
                 query_model = self.props.query_model
@@ -220,7 +237,7 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                         entry, path = list(treerow)
                         self.add_entry(entry, -1)
                 player.set_playing_source(self)
-                self.__playing_source_view.set_state(RB.EntryViewState.PLAYING)
+                playing_source_view.set_state(RB.EntryViewState.PLAYING)
 
 
         def add_entries_callback(self, action, data):
@@ -260,5 +277,5 @@ class NowPlaying(GObject.Object, Peas.Activatable):
         def do_deactivate(self):
                 # destroy source
                 self.__source.do_delete_thyself()
-                self.__source = None
+                del self.__source
 
