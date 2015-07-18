@@ -189,6 +189,7 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                         state = RB.EntryViewState.PAUSED
                 entry_view.set_state(state)
                 sidebar.set_state(state)
+                self.__playing_source_view.set_state(state)
         
         # When a source is selected to play, we intercept that call and replace
         # the selected source with the NowPlayingSource.
