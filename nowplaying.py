@@ -60,9 +60,13 @@ class NowPlayingSource(RB.StaticPlaylistSource):
 
                 self.__playing_source = None
                 self.create_sidebar()
-
-        def do_can_rename(self):
-                return False
+                # Activating Now Playing. FIXME: This should be smoother
+                playing_source = shell_player.get_playing_source()
+                if playing_source:
+                        shell_player.stop()
+                        shell_player.set_playing_source(playing_source)
+                        shell_player.stop()
+                                
 
         def do_delete_thyself(self):
                 if not self.__activated:
@@ -113,6 +117,9 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 # TODO: Delete the rest of the fields
                 del self.__playing_source
                 del self.__activated
+
+        def do_can_rename(self):
+                return False
 
         def create_sidebar(self):
                 shell = self.props.shell
