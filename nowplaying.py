@@ -13,74 +13,90 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 self.__activated = False
 
         def do_activate(self):
+                if self.__activated:
+                        print("SOURCE ALREADY ACTIVATED!")
+                        return
+
                 print("ACTIVATING SOURCE!")
-                if not self.__activated:
-                        self.__activated = True
+                self.__activated = True
 
-                        # create menu to add items to Now Playng
-                        self.__action = Gio.SimpleAction(name="add-to-now-playing")
-                        self.__action.connect("activate", self.add_entries_callback)
+                # create menu to add items to Now Playng
+                self.__action = Gio.SimpleAction(name="add-to-now-playing")
+                self.__action.connect("activate", self.add_entries_callback)
 
-                        app = Gio.Application.get_default()
-                        app.add_action(self.__action)
+                app = Gio.Application.get_default()
+                app.add_action(self.__action)
 
-                        item = Gio.MenuItem()
-                        item.set_label("Add to Now Playing")
-                        item.set_detailed_action("app.add-to-now-playing")
-                        app.add_plugin_menu_item('browser-popup', 
-                                'add-to-now-playing', item)
+                item = Gio.MenuItem()
+                item.set_label("Add to Now Playing")
+                item.set_detailed_action("app.add-to-now-playing")
+                app.add_plugin_menu_item('browser-popup', 
+                                        'add-to-now-playing', item)
 
-                        # Connect to row-inserted and row-deleted signals 
-                        # from "my own" QueryModel.
-                        # TODO: Why not use RBEntryView entry-added/deleted?
-                        self.props.base_query_model.connect(
-                                "row-inserted",
-                                self.row_inserted_callback)
-                        self.props.base_query_model.connect(
-                                "row-deleted", 
-                                self.row_deleted_callback)
+                # Connect to row-inserted and row-deleted signals 
+                # from "my own" QueryModel.
+                # TODO: Why not use RBEntryView entry-added/deleted?
+                signals = self.__signals = []
+                query_model = self.props.base_query_model
+                signals.append((query_model.connect("row-inserted",
+                                        self.row_inserted_callback),
+                                query_model))
+                                
+                signals.append((query_model.connect("row-deleted", 
+                                        self.row_deleted_callback),
+                                query_model))
 
-                        # Connect to ShellPlayer's "playing-source-changed"...
-                        shell_player = self.props.shell.props.shell_player
-                        self.__source_changed_signal_id = shell_player.connect(
-                                "playing-source-changed",
-                                self.source_changed_callback)
+                # Connect to ShellPlayer's "playing-source-changed"...
+                shell_player = self.props.shell.props.shell_player
+                signals.append((shell_player.connect(
+                                        "playing-source-changed",
+                                        self.source_changed_callback),
+                                shell_player))
+                # ... and "playing-changed".
+                signals.append((shell_player.connect("playing-changed",
+                                        self.playing_changed_callback),
+                                shell_player))
 
-                        # ... and "playing-changed".
-                        self.__source_changed_signal_id = shell_player.connect(
-                                "playing-changed",
-                                self.playing_changed_callback)
-
-                        self.__playing_source = None
-                        self.create_sidebar()
+                self.__playing_source = None
+                self.create_sidebar()
 
         def do_can_rename(self):
                 return False
 
         def do_delete_thyself(self):
-                print("Deactivating")
-                if self.__activated:
-                        # Remove menu action
-                        shell = self.props.shell
-                        app = Gio.Application.get_default()
-                        app.remove_action('add-to-now-playing')
-                        app.remove_plugin_menu_item('browser-popup', 'add-to-now-playing')
-                        del self.__action
+                if not self.__activated:
+                        print("SOURCE IS NOT ACTIVATED!")
+                        return
 
-                        # Remove display page
-                        shell.props.display_page_model.remove_page(self)
+                print("DEACTIVATING")
+                # Remove menu action
+                shell = self.props.shell
+                app = Gio.Application.get_default()
+                app.remove_action('add-to-now-playing')
+                app.remove_plugin_menu_item('browser-popup', 'add-to-now-playing')
+                del self.__action
 
-                        # Clear query model
-                        model = self.props.base_query_model
-                        iter = model.get_iter_first() 
-                        while(iter):
-                                entry_to_remove = model.iter_to_entry(iter)
-                                if(entry_to_remove):
-                                        model.remove_entry(entry_to_remove)
-                                iter = model.get_iter_first()
+                # Disconnect from signals
+                for signal_id, signal_emitter in self.__signals:
+                        signal_emitter.disconnect(signal_id)
 
-                        self.__activated = False
-                        self.__playing_source = None
+                # Remove display page
+                shell.props.display_page_model.remove_page(self)
+
+                # Clear query model
+                model = self.props.base_query_model
+                iter = model.get_iter_first() 
+                while(iter):    #FIXME: Isn't there an API call to clear the model!
+                        entry_to_remove = model.iter_to_entry(iter)
+                        if(entry_to_remove):
+                                model.remove_entry(entry_to_remove)
+                        iter = model.get_iter_first()
+
+                self.__activated = False
+                self.__playing_source = None
+                self.get_property("shell").remove_widget (
+                self.__sidebar, RB.ShellUILocation.RIGHT_SIDEBAR)
+                # TODO: Delete the actual sidebar.
 
         def create_sidebar(self):
                 shell = self.props.shell
@@ -116,6 +132,7 @@ class NowPlayingSource(RB.StaticPlaylistSource):
 
 	        # Connect to the "entry-activated" signal of the sidebar
                 sidebar.connect("entry-activated", self.sidebar_entry_activated)
+                
 
         def sidebar_entry_activated(self, sidebar, selected_entry):
                 player = self.get_property("shell").get_property("shell-player")
@@ -138,7 +155,6 @@ class NowPlayingSource(RB.StaticPlaylistSource):
         #####################################################################
         #                       CALLBACKS                                   #
         #####################################################################
-
         # Callback to the "row_inserted" signal to RBEntryView.
         # Updates the song number shown in brackets in the display tree.
         def row_inserted_callback(self, model, tree_path, iter):
@@ -202,9 +218,9 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 for treerow in new_source.props.query_model: # Add new entries
                         entry, path = list(treerow)
                         self.add_entry(entry, -1)
-
                 player.set_playing_source(self)
                 self.__playing_source_view.set_state(RB.EntryViewState.PLAYING)
+
 
         def add_entries_callback(self, action, data):
                 library_source = self.props.shell.props.library_source
