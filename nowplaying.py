@@ -333,6 +333,7 @@ class NowPlayingSource(RB.StaticPlaylistSource):
 
         # Callback to the "row_inserted" signal to RBEntryView.
         # Updates the song number shown in brackets in the display tree.
+        # TODO: Also update sidebar title column
         def row_deleted_callback(self, model, tree_path):
                 count = model.iter_n_children(None)
                 base_name = _("Now Playing")
@@ -355,8 +356,11 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 else:
                         state = RB.EntryViewState.PAUSED
                 entry_view.set_state(state)
+                entry_view.scroll_to_entry(player.get_playing_entry())
                 self.__sidebar.set_state(state)
+                self.__sidebar.scroll_to_entry(player.get_playing_entry())
                 self.__playing_source.get_entry_view().set_state(state)
+                
         
         # When a source is selected to play, we intercept that call and replace
         # the selected source with the NowPlayingSource.
@@ -364,6 +368,7 @@ class NowPlayingSource(RB.StaticPlaylistSource):
         def source_changed_callback(self, player, new_source):
                 if new_source == None:
                         print("NO SOURCE SELECTED")
+                        self.__playing_source = None
                         return
 
                 print("NEW SOURCE PLAYING: " + new_source.get_property("name"))
