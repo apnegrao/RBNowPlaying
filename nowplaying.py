@@ -7,10 +7,74 @@ import rb, operator
 from gi.repository import RB
 from gi.repository import GObject, Peas, Gtk, Gio, GdkPixbuf
 
+#FIXME: Move this to a .ui file
+ui_context_menus = """ 
+<interface>
+  <menu id="NP-source-popup">
+    <submenu>
+      <attribute name="label" translatable="yes">Remove</attribute>
+      <section>
+        <item>
+      	  <attribute name="label" translatable="yes">Song</attribute>
+	  <attribute name="action">app.clipboard-delete</attribute>
+        </item>
+        <item>
+      	  <attribute name="label" translatable="yes">Album</attribute>
+	  <attribute name="action">app.NP-source-delete-album</attribute>
+        </item>
+        <item>
+      	  <attribute name="label" translatable="yes">Artist</attribute>
+	  <attribute name="action">app.NP-source-delete-artist</attribute>
+        </item>
+      </section>
+    </submenu>
+    <section>
+      <attribute name="rb-plugin-menu-link">source-popup</attribute>
+    </section>
+    <section>
+      <item>
+	<attribute name="label" translatable="yes">Pr_operties</attribute>
+	<attribute name="action">app.clipboard-properties</attribute>
+      </item>
+    </section>
+  </menu>
+  <menu id="NP-sidebar-popup">
+    <submenu>
+      <attribute name="label" translatable="yes">Remove</attribute>
+      <section>
+        <item>
+      	  <attribute name="label" translatable="yes">Song</attribute>
+	  <attribute name="action">app.NP-sidebar-delete-song</attribute>
+        </item>
+        <item>
+      	  <attribute name="label" translatable="yes">Album</attribute>
+	  <attribute name="action">app.NP-sidebar-delete-album</attribute>
+        </item>
+        <item>
+      	  <attribute name="label" translatable="yes">Artist</attribute>
+	  <attribute name="action">app.NP-sidebar-delete-artist</attribute>
+        </item>
+      </section>
+    </submenu>
+    <section>
+      <attribute name="rb-plugin-menu-link">sidebar-popup</attribute>
+    </section>
+    <section>
+      <item>
+	<attribute name="label" translatable="yes">Pr_operties</attribute>
+	<attribute name="action">app.sidebar-properties</attribute>
+      </item>
+    </section>
+  </menu>
+</interface>
+"""
+
 class NowPlayingSource(RB.StaticPlaylistSource):
         def __init__(self):
                 super(NowPlayingSource,self).__init__()
                 self.__activated = False
+                self.__playing_source = None
+                self.__signals = None
 
         def do_activate(self):
                 if self.__activated:
@@ -19,19 +83,59 @@ class NowPlayingSource(RB.StaticPlaylistSource):
 
                 print("ACTIVATING SOURCE!")
                 self.__activated = True
-
-                # create menu to add items to Now Playng
-                self.__action = Gio.SimpleAction(name="add-to-now-playing")
-                self.__action.connect("activate", self.add_entries_callback)
+                self.__entry_view = self.get_entry_view()
+                self.__playing_source = None
+                self.create_sidebar()
 
                 app = Gio.Application.get_default()
-                app.add_action(self.__action)
-
+                # Create action to add items to Now Playing
+                browser_action = Gio.SimpleAction(name="add-to-now-playing")
+                browser_action.connect("activate", self.add_entries_callback)
+                app.add_action(browser_action)
+                # Add the corresponding menu item to the library
                 item = Gio.MenuItem()
                 item.set_label("Add to Now Playing")
                 item.set_detailed_action("app.add-to-now-playing")
                 app.add_plugin_menu_item('browser-popup', 
                                         'add-to-now-playing', item)
+
+                # Create the sidebar context menu actions
+                action = Gio.SimpleAction(name="NP-sidebar-delete-song")
+                action.connect("activate", 
+                        self.menu_delete_entry_callback, 
+                        RB.RhythmDBPropType.TITLE, self.__sidebar)
+                app.add_action(action)
+                action = Gio.SimpleAction(name="NP-sidebar-delete-album")
+                action.connect("activate", 
+                        self.menu_delete_entry_callback,
+                        RB.RhythmDBPropType.ALBUM, self.__sidebar)
+                app.add_action(action)
+                action = Gio.SimpleAction(name="NP-sidebar-delete-artist")
+                action.connect("activate", 
+                        self.menu_delete_entry_callback, 
+                        RB.RhythmDBPropType.ARTIST, self.__sidebar)
+                app.add_action(action)
+                prop_action = Gio.SimpleAction(name="sidebar-properties")
+                prop_action.connect("activate", 
+                        self.sidebar_properties_callback)
+                app.add_action(prop_action)
+                # ...and the source page context menu actions
+                action = Gio.SimpleAction(name="NP-source-delete-album")
+                action.connect("activate", 
+                        self.menu_delete_entry_callback,
+                        RB.RhythmDBPropType.ALBUM, self.__entry_view)
+                app.add_action(action)
+                action = Gio.SimpleAction(name="NP-source-delete-artist")
+                action.connect("activate", 
+                        self.menu_delete_entry_callback, 
+                        RB.RhythmDBPropType.ARTIST, self.__entry_view)
+                app.add_action(action)
+
+                # Create the context menus from XML
+                builder = Gtk.Builder.new_from_string(ui_context_menus,
+                        len(ui_context_menus))
+                self.__source_menu = builder.get_object("NP-source-popup")
+                self.__sidebar_menu = builder.get_object("NP-sidebar-popup")
 
                 # Connect to row-inserted and row-deleted signals 
                 # from "my own" QueryModel.
@@ -58,8 +162,6 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                                         self.playing_changed_callback),
                                 shell_player))
 
-                self.__playing_source = None
-                self.create_sidebar()
                 # Activating Now Playing. FIXME: This should be smoother
                 playing_source = shell_player.get_playing_source()
                 if playing_source:
@@ -79,11 +181,11 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 app = Gio.Application.get_default()
                 app.remove_action('add-to-now-playing')
                 app.remove_plugin_menu_item('browser-popup', 'add-to-now-playing')
-                del self.__action
 
                 # Disconnect from signals
                 for signal_id, signal_emitter in self.__signals:
                         signal_emitter.disconnect(signal_id)
+                del self.__signals
 
                 # Get the current playing status to use later
                 shell = self.get_property("shell")
@@ -94,15 +196,16 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 # Clear query model
                 model = self.props.base_query_model
                 iter = model.get_iter_first() 
-                while(iter):    #FIXME: Isn't there an API call to clear the model!
-                        entry_to_remove = model.iter_to_entry(iter)
-                        if(entry_to_remove):
-                                model.remove_entry(entry_to_remove)
-                        iter = model.get_iter_first()
+                query_model = self.props.base_query_model
+                #FIXME: Isn't there an API call to clear the model?
+                for treerow in query_model:     # Clear current selection
+                        entry, path = list(treerow)
+                        self.remove_entry(entry)
 
                 self.get_property("shell").remove_widget (
-                self.__sidebar, RB.ShellUILocation.RIGHT_SIDEBAR)
-                # TODO: Delete the actual sidebar.
+                        self.__sidebar, RB.ShellUILocation.RIGHT_SIDEBAR)
+                self.__sidebar.destroy()
+                del self.__sidebar
                 # Set the new source and playing entry
                 # XXX: Maybe I should just stop playback and scroll to the
                 # previously playing entry
@@ -116,10 +219,50 @@ class NowPlayingSource(RB.StaticPlaylistSource):
 
                 # TODO: Delete the rest of the fields
                 del self.__playing_source
-                del self.__activated
 
-        def do_can_rename(self):
+        def do_impl_can_rename(self):
                 return False
+
+        # Callback for the delete actions of the context menus of both the 
+        # sidebar and the source page.
+        def menu_delete_entry_callback(self, action, data, prop, view):
+                selected_entries = view.get_selected_entries()
+                if prop == RB.RhythmDBPropType.TITLE:
+                        for entry in selected_entries:
+                                self.remove_entry(entry)
+                        return
+                model = self.get_property("base-query-model")
+                delete_keys = set()
+                for entry in selected_entries:
+                        delete_keys.add(entry.get_string(prop))
+                entries_to_delete = set()
+                model.foreach(self.delete_entry_by_prop, 
+                          prop, delete_keys, entries_to_delete)
+                for entry in entries_to_delete:
+                          self.remove_entry(entry)
+                del delete_keys
+                del entries_to_delete
+
+
+        def delete_entry_by_prop(self, model, path, iter, prop, prop_set, 
+                        entries_to_delete):
+                entry = model.iter_to_entry(iter)
+                entry_prop = entry.get_string(prop)
+                if(entry_prop in prop_set):
+                        entries_to_delete.add(entry)
+                return False
+
+        def sidebar_properties_callback(self, action, data):
+                song_info = RB.SongInfo.new(self, self.__sidebar)
+                song_info.show_all()
+
+        def do_impl_show_entry_view_popup(self, view, over_entry):
+                if view == self.__sidebar:
+                        menu = Gtk.Menu.new_from_model(self.__sidebar_menu)
+                else:
+                        menu = Gtk.Menu.new_from_model(self.__source_menu)
+                menu.attach_to_widget(self, None)
+                menu.popup(None, None, None, None, 3, Gtk.get_current_event_time())
 
         def create_sidebar(self):
                 shell = self.props.shell
@@ -154,10 +297,10 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 sidebar.show_all()
 
 	        # Connect to the "entry-activated" signal of the sidebar
-                sidebar.connect("entry-activated", self.sidebar_entry_activated)
-                
+                sidebar.connect("entry-activated", 
+                        self.sidebar_entry_activated_callback)
 
-        def sidebar_entry_activated(self, sidebar, selected_entry):
+        def sidebar_entry_activated_callback(self, sidebar, selected_entry):
                 player = self.get_property("shell").get_property("shell-player")
                 player.play_entry(selected_entry, self)
 
