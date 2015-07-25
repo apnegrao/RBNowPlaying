@@ -194,9 +194,8 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 playing_entry = player.get_playing_entry()
 
                 # Clear query model
-                model = self.props.base_query_model
-                iter = model.get_iter_first() 
                 query_model = self.props.base_query_model
+                iter = query_model.get_iter_first() 
                 #FIXME: Isn't there an API call to clear the model?
                 for treerow in query_model:     # Clear current selection
                         entry, path = list(treerow)
@@ -204,8 +203,6 @@ class NowPlayingSource(RB.StaticPlaylistSource):
 
                 self.get_property("shell").remove_widget (
                         self.__sidebar, RB.ShellUILocation.RIGHT_SIDEBAR)
-                self.__sidebar.destroy()
-                del self.__sidebar
                 # Set the new source and playing entry
                 # XXX: Maybe I should just stop playback and scroll to the
                 # previously playing entry
@@ -217,7 +214,6 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 # Remove display page
                 shell.props.display_page_model.remove_page(self)
 
-                # TODO: Delete the rest of the fields
                 del self.__playing_source
 
         def do_impl_can_rename(self):
@@ -334,7 +330,6 @@ class NowPlayingSource(RB.StaticPlaylistSource):
 
         # Callback to the "row_inserted" signal to RBEntryView.
         # Updates the song number shown in brackets in the display tree.
-        # TODO: Also update sidebar title column
         def row_deleted_callback(self, model, tree_path):
                 count = model.iter_n_children(None)
                 base_name = _("Now Playing")
