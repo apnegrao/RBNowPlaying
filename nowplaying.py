@@ -276,7 +276,7 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 sidebar.get_style_context().add_class("nowplaying-sidebar")
 
                 renderer = Gtk.CellRendererText.new()
-                sidebar_column = Gtk.TreeViewColumn.new()
+                sidebar_column = self.__sidebar_column = Gtk.TreeViewColumn.new()
                 sidebar_column.pack_start(renderer, True)
                 sidebar_column.set_sizing(Gtk.TreeViewColumnSizing.FIXED)
                 sidebar_column.set_expand(True)
@@ -330,6 +330,7 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                         self.props.name = base_name + " (" + str(count) + ")"
                 else:
                         self.props.name = base_name
+                self.__sidebar_column.set_title(self.props.name)
 
         # Callback to the "row_inserted" signal to RBEntryView.
         # Updates the song number shown in brackets in the display tree.
@@ -341,7 +342,7 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                         self.props.name = base_name + " (" + str(count - 1) + ")"
                 else:
                         self.props.name = base_name
-
+                self.__sidebar_column.set_title(self.props.name)
         
         # Updates the playing status symbol (play/pause) next to the playing
         # entry in the NowPlaying source. 
@@ -384,7 +385,7 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 playing_source_view = new_source.get_entry_view()
                 
                 # FIXME: Should I be using base_query_model instead?
-                query_model = self.props.query_model
+                query_model = self.get_property("query-model")
                 for treerow in query_model:     # Clear current selection
                         entry, path = list(treerow)
                         self.remove_entry(entry)
