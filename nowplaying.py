@@ -137,11 +137,11 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 self.__source_menu = builder.get_object("NP-source-popup")
                 self.__sidebar_menu = builder.get_object("NP-sidebar-popup")
 
-                # Connect to row-inserted and row-deleted signals 
-                # from "my own" QueryModel.
-                # TODO: Why not use RBEntryView entry-added/deleted?
+                # Connect to row-inserted and row-deleted signals from Now 
+                # Playing QueryModel. We catch this signal to update the song 
+                # count on the titles of the source page and sidebar.
                 signals = self.__signals = []
-                query_model = self.props.base_query_model
+                query_model = self.get_property("base-query-model")
                 signals.append((query_model.connect("row-inserted",
                                         self.row_inserted_callback),
                                 query_model))
@@ -151,7 +151,8 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                                 query_model))
 
                 # Connect to ShellPlayer's "playing-source-changed"...
-                shell_player = self.props.shell.props.shell_player
+                shell = self.get_property("shell")
+                shell_player = shell.get_property("shell-player")
                 signals.append((shell_player.connect(
                                         "playing-source-changed",
                                         self.source_changed_callback),
@@ -177,7 +178,7 @@ class NowPlayingSource(RB.StaticPlaylistSource):
 
                 print("DEACTIVATING")
                 # Remove menu action
-                shell = self.props.shell
+                shell = self.get_property("shell")
                 app = Gio.Application.get_default()
                 app.remove_action('add-to-now-playing')
                 app.remove_plugin_menu_item('browser-popup', 'add-to-now-playing')
@@ -194,7 +195,7 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 playing_entry = player.get_playing_entry()
 
                 # Clear query model
-                query_model = self.props.base_query_model
+                query_model = self.get_property("base-query-model")
                 iter = query_model.get_iter_first() 
                 #FIXME: Isn't there an API call to clear the model?
                 for treerow in query_model:     # Clear current selection
@@ -212,7 +213,7 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                                         self.__playing_source)
 
                 # Remove display page
-                shell.props.display_page_model.remove_page(self)
+                shell.get_property("display-page-model").remove_page(self)
 
                 del self.__playing_source
 
@@ -220,7 +221,8 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 return False
 
         # Callback for the delete actions of the context menus of both the 
-        # sidebar and the source page.
+        # sidebar and the source page. Deletes from 'view' all the entries 
+        # with property 'prop'.
         def menu_delete_entry_callback(self, action, data, prop, view):
                 selected_entries = view.get_selected_entries()
                 if prop == RB.RhythmDBPropType.TITLE:
@@ -240,14 +242,18 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 del entries_to_delete
 
 
-        def delete_entry_by_prop(self, model, path, iter, prop, prop_set, 
-                        entries_to_delete):
+        # Used by 'menu_delete_entry_callback'. Deletes and entry
+        # (given by 'iter') if the value of its 'prop' property
+        # is in 'prop_set'.
+        def delete_entry_by_prop(self, model, path, iter, prop, 
+                        prop_set, entries_to_delete):
                 entry = model.iter_to_entry(iter)
                 entry_prop = entry.get_string(prop)
                 if(entry_prop in prop_set):
                         entries_to_delete.add(entry)
                 return False
 
+        # Callback for the 'Properties' action of the sidebar's context menu.
         def sidebar_properties_callback(self, action, data):
                 song_info = RB.SongInfo.new(self, self.__sidebar)
                 song_info.show_all()
@@ -261,10 +267,10 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 menu.popup(None, None, None, None, 3, Gtk.get_current_event_time())
 
         def create_sidebar(self):
-                shell = self.props.shell
+                shell = self.get_property("shell")
                 sidebar = self.__sidebar = RB.EntryView.new(
-                        shell.props.db, 
-                        shell.props.shell_player, 
+                        shell.get_property("db"), 
+                        shell.get_property("shell-player"), 
                         True, True)
 
                 sidebar.set_property("vscrollbar-policy", Gtk.PolicyType.AUTOMATIC)
@@ -296,10 +302,6 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 sidebar.connect("entry-activated", 
                         self.sidebar_entry_activated_callback)
 
-        def sidebar_entry_activated_callback(self, sidebar, selected_entry):
-                player = self.get_property("shell").get_property("shell-player")
-                player.play_entry(selected_entry, self)
-
         def cell_data_func(self, sidebar_column, renderer, tree_model, iter, data):
                 db = self.get_property("shell").get_property("db")
                 entry = tree_model.get(iter, 0)[0]
@@ -310,9 +312,11 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                         "<b>" + GObject.markup_escape_text(title) + "</b>\n" + \
                         "<i>" + GObject.markup_escape_text(album) + "</i>\n" + \
                         "<i>" + GObject.markup_escape_text(artist) + "</i></span>"
-                renderer.set_property(
-                        "markup", markup)
+                renderer.set_property("markup", markup)
 
+        def sidebar_entry_activated_callback(self, sidebar, selected_entry):
+                player = self.get_property("shell").get_property("shell-player")
+                player.play_entry(selected_entry, self)
 
         #####################################################################
         #                       CALLBACKS                                   #
@@ -320,24 +324,22 @@ class NowPlayingSource(RB.StaticPlaylistSource):
         # Callback to the "row_inserted" signal to RBEntryView.
         # Updates the song number shown in brackets in the display tree.
         def row_inserted_callback(self, model, tree_path, iter):
-                base_name = _("Now Playing")
+                name = base_name = _("Now Playing")
                 count = model.iter_n_children(None)
                 if count > 0:
-                        self.props.name = base_name + " (" + str(count) + ")"
-                else:
-                        self.props.name = base_name
-                self.__sidebar_column.set_title(self.props.name)
+                        name = base_name + " (" + str(count) + ")"
+                self.set_property("name", name)
+                self.__sidebar_column.set_title(name)
 
         # Callback to the "row_inserted" signal to RBEntryView.
         # Updates the song number shown in brackets in the display tree.
         def row_deleted_callback(self, model, tree_path):
                 count = model.iter_n_children(None)
-                base_name = _("Now Playing")
+                name = base_name = _("Now Playing")
                 if count -1 > 0:
-                        self.props.name = base_name + " (" + str(count - 1) + ")"
-                else:
-                        self.props.name = base_name
-                self.__sidebar_column.set_title(self.props.name)
+                        name = base_name + " (" + str(count - 1) + ")"
+                self.set_property("name", name)
+                self.__sidebar_column.set_title(name)
         
         # Updates the playing status symbol (play/pause) next to the playing
         # entry in the NowPlaying source. 
@@ -345,18 +347,23 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 print("PLAY STATE CHANGED!")
                 if not self.__playing_source:
                         return
-                entry_view = super(RB.StaticPlaylistSource, self).get_entry_view()
+                entry_view = self.__entry_view
+                sidebar = self.__sidebar
                 state = None
                 if playing:
                         state = RB.EntryViewState.PLAYING
                 else:
                         state = RB.EntryViewState.PAUSED
+                # Update the playing symbol EVERYWHERE
                 entry_view.set_state(state)
-                entry_view.scroll_to_entry(player.get_playing_entry())
-                self.__sidebar.set_state(state)
-                self.__sidebar.scroll_to_entry(player.get_playing_entry())
+                sidebar.set_state(state)
                 self.__playing_source.get_entry_view().set_state(state)
-                
+
+                # Scroll to playing entry if it is not visible
+                playing_entry = player.get_playing_entry()
+                if playing_entry:
+                        entry_view.scroll_to_entry(playing_entry)
+                        sidebar.scroll_to_entry(playing_entry)
         
         # When a source is selected to play, we intercept that call and replace
         # the selected source with the NowPlayingSource.
@@ -380,19 +387,25 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 playing_source_view = new_source.get_entry_view()
                 
                 # FIXME: Should I be using base_query_model instead?
+                # Clear current selection
                 query_model = self.get_property("query-model")
-                for treerow in query_model:     # Clear current selection
+                for treerow in query_model:
                         entry, path = list(treerow)
                         self.remove_entry(entry)
-                for treerow in new_source.props.query_model: # Add new entries
+                # Add new entries
+                new_source_model = new_source.get_property("query-model")
+                for treerow in new_source_model:
                         entry, path = list(treerow)
                         self.add_entry(entry, -1)
                 player.set_playing_source(self)
                 playing_source_view.set_state(RB.EntryViewState.PLAYING)
 
 
+        # Callback for the 'Add to Now Playing' action we added to the 
+        # context menu of the library browser.
         def add_entries_callback(self, action, data):
-                library_source = self.props.shell.props.library_source
+                shell = self.get_property("shell")
+                library_source = self.shell.get_property("library-source")
                 selected = library_source.get_entry_view().get_selected_entries()
                 for selected_entry in selected:
                         self.add_entry(selected_entry, -1)
@@ -405,7 +418,7 @@ class NowPlaying(GObject.Object, Peas.Activatable):
 
         def do_activate(self):
                 shell = self.object
-                db = shell.props.db
+                db = shell.get_property("db")
 
                 # create Now Playing source
                 self.__source = GObject.new(
