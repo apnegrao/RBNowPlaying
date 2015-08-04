@@ -69,7 +69,7 @@ ui_context_menus = """
 </interface>
 """
 
-class NowPlayingSource(RB.StaticPlaylistSource):
+class NowPlayingSource(RB.PlaylistSource):
         def __init__(self):
                 super(NowPlayingSource,self).__init__()
                 self.__activated = False
@@ -84,6 +84,8 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 print("ACTIVATING SOURCE!")
                 self.__activated = True
                 self.__entry_view = self.get_entry_view()
+                columns = ["artist","album","duration","track"]
+                self.__entry_view.set_property("visible-columns", columns)
                 self.__playing_source = None
                 self.create_sidebar()
 
@@ -196,7 +198,7 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 #FIXME: Isn't there an API call to clear the model?
                 for treerow in query_model:     # Clear current selection
                         entry, path = list(treerow)
-                        self.remove_entry(entry)
+                        query_model.remove_entry(entry)
 
                 self.get_property("shell").remove_widget (
                         self.__sidebar, RB.ShellUILocation.RIGHT_SIDEBAR)
@@ -220,10 +222,11 @@ class NowPlayingSource(RB.StaticPlaylistSource):
         # sidebar and the source page. Deletes from 'view' all the entries 
         # with property 'prop'.
         def menu_delete_entry_callback(self, action, data, prop, view):
+                model = self.get_property("query-model")
                 selected_entries = view.get_selected_entries()
                 if prop == RB.RhythmDBPropType.TITLE:
                         for entry in selected_entries:
-                                self.remove_entry(entry)
+                                model.remove_entry(entry)
                         self.update_titles()
                         return
                 model = self.get_property("base-query-model")
@@ -234,7 +237,7 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 model.foreach(self.delete_entry_by_prop, 
                           prop, delete_keys, entries_to_delete)
                 for entry in entries_to_delete:
-                          self.remove_entry(entry)
+                          model.remove_entry(entry)
                 self.update_titles()
                 del delete_keys
                 del entries_to_delete
@@ -376,14 +379,19 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 # FIXME: Should I be using base_query_model instead?
                 # Clear current selection
                 query_model = self.get_property("query-model")
-                for treerow in query_model:
-                        entry, path = list(treerow)
-                        self.remove_entry(entry)
+                #for treerow in query_model:
+                #        entry, path = list(treerow)
+                #        self.remove_entry(entry)
                 # Add new entries
                 new_source_model = new_source.get_property("query-model")
-                for treerow in new_source_model:
-                        entry, path = list(treerow)
-                        self.add_entry(entry, -1)
+                new_model = RB.RhythmDBQueryModel.new_empty(
+                        self.get_property("db"))
+                new_model.copy_contents(new_source_model)
+                self.set_query_model(new_model)
+                self.__sidebar.set_model(new_model)
+                #for treerow in new_source_model:
+                #        entry, path = list(treerow)
+                #        self.add_entry(entry, -1)
                 player.set_playing_source(self)
                 playing_source_view.set_state(RB.EntryViewState.PLAYING)
                 self.update_titles()
@@ -391,11 +399,12 @@ class NowPlayingSource(RB.StaticPlaylistSource):
         # Callback for the 'Add to Now Playing' action we added to the 
         # context menu of the library browser.
         def add_entries_callback(self, action, data):
+                model = self.get_property("query-model")
                 shell = self.get_property("shell")
                 library_source = shell.get_property("library-source")
                 selected = library_source.get_entry_view().get_selected_entries()
                 for selected_entry in selected:
-                        self.add_entry(selected_entry, -1)
+                        model.add_entry(selected_entry, -1)
                 self.update_titles()
                 return
 
