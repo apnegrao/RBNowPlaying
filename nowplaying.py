@@ -69,12 +69,13 @@ ui_context_menus = """
 </interface>
 """
 
-class NowPlayingSource(RB.PlaylistSource):
+class NowPlayingSource(RB.StaticPlaylistSource):
         def __init__(self):
                 super(NowPlayingSource,self).__init__()
                 self.__activated = False
                 self.__playing_source = None
                 self.__signals = None
+                self.__filter = None
 
         def do_activate(self):
                 if self.__activated:
@@ -193,7 +194,7 @@ class NowPlayingSource(RB.PlaylistSource):
                 playing_entry = player.get_playing_entry()
 
                 # Clear query model
-                query_model = self.get_property("base-query-model")
+                query_model = self.get_property("query-model")
                 iter = query_model.get_iter_first() 
                 #FIXME: Isn't there an API call to clear the model?
                 for treerow in query_model:     # Clear current selection
@@ -229,7 +230,6 @@ class NowPlayingSource(RB.PlaylistSource):
                                 model.remove_entry(entry)
                         self.update_titles()
                         return
-                model = self.get_property("base-query-model")
                 delete_keys = set()
                 for entry in selected_entries:
                         delete_keys.add(entry.get_string(prop))
@@ -376,7 +376,6 @@ class NowPlayingSource(RB.PlaylistSource):
                 self.__playing_source = new_source
                 playing_source_view = new_source.get_entry_view()
                 
-                # FIXME: Should I be using base_query_model instead?
                 # Clear current selection
                 query_model = self.get_property("query-model")
                 #for treerow in query_model:
@@ -395,7 +394,23 @@ class NowPlayingSource(RB.PlaylistSource):
                 player.set_playing_source(self)
                 playing_source_view.set_state(RB.EntryViewState.PLAYING)
                 self.update_titles()
-                
+
+        def do_impl_search(self, search, cur_text, new_text):
+                query_model = self.get_property("query-model")
+                if len(new_text) > 0 and new_text != cur_text:
+                        db = self.get_property("db")
+                        search_results = search.create_query (db, new_text)
+                        self.__filter = RB.RhythmDBQueryModel.new_empty (db)
+                        self.__filter.set_property("base-model", query_model)
+
+                        db.do_full_query_parsed(self.__filter, search_results)
+                        self.__filter.reapply_query(True)
+                        self.__entry_view.set_model(self.__filter)
+                elif len(new_text) == 0:
+                        self.__filter = None
+                        self.__entry_view.set_model(query_model)
+        
+
         # Callback for the 'Add to Now Playing' action we added to the 
         # context menu of the library browser.
         def add_entries_callback(self, action, data):
