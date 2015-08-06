@@ -11,6 +11,12 @@ from gi.repository import GObject, Peas, Gtk, Gio, GdkPixbuf
 ui_context_menus = """ 
 <interface>
   <menu id="NP-source-popup">
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">Clear</attribute>
+	<attribute name="action">app.NP-clear</attribute>
+      </item>
+    </section>
     <submenu>
       <attribute name="label" translatable="yes">Remove</attribute>
       <section>
@@ -39,6 +45,12 @@ ui_context_menus = """
     </section>
   </menu>
   <menu id="NP-sidebar-popup">
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">Clear</attribute>
+	<attribute name="action">app.NP-clear</attribute>
+      </item>
+    </section>
     <submenu>
       <attribute name="label" translatable="yes">Remove</attribute>
       <section>
@@ -136,6 +148,11 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 action.connect("activate", 
                         self.menu_delete_entry_callback, 
                         RB.RhythmDBPropType.ARTIST, self.__entry_view)
+                app.add_action(action)
+                # Create clear action
+                action = Gio.SimpleAction(name="NP-clear")
+                action.connect("activate", 
+                        self.menu_delete_entry_callback, None, None)
                 app.add_action(action)
 
                 # Create the context menus from XML
@@ -346,9 +363,21 @@ class NowPlayingSource(RB.StaticPlaylistSource):
 
         # Callback for the delete actions of the context menus of both the 
         # sidebar and the source page. Deletes from 'view' all the entries 
-        # with property 'prop'.
+        # with property 'prop' or clears the list if both t'prop' and 'view'
+        # are None
         def menu_delete_entry_callback(self, action, data, prop, view):
                 model = self.get_property("query-model")
+                if not prop and not view:
+                        db = self.get_property("db")
+                        new_model = RB.RhythmDBQueryModel.new_empty(
+                                self.get_property("db"))
+                        self.set_query_model(new_model)
+                        self.__sidebar.set_model(new_model)
+                        player = self.get_property("shell").\
+                                get_property("shell-player")
+                        player.stop()
+                        self.update_titles()
+                        return
                 selected_entries = view.get_selected_entries()
                 if prop == RB.RhythmDBPropType.TITLE:
                         for entry in selected_entries:
