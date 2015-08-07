@@ -225,14 +225,18 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 del self.__playing_source
 
         # Prevent the source page from being renamed.
-        def do_impl_can_rename(self):
+        def do_can_rename(self):
                 return False
+
+        # For compatibility with RB version 3.1 (and lower?)
+        def do_impl_can_rename(self):
+                self.do_can_rename()
 
         # Updates the source page by showing only the entries that match the
         # search query inserted by the user. The search results do no influence
         # the play order, i.e., Now Playing will keep playing from the non filtered
         # query model.
-        def do_impl_search(self, search, cur_text, new_text):
+        def do_search(self, search, cur_text, new_text):
                 query_model = self.get_property("query-model")
                 if len(new_text) > 0 and new_text != cur_text:
                         db = self.get_property("db")
@@ -247,14 +251,22 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                         self.__filter = None
                         self.__entry_view.set_model(query_model)
 
+        # For compatibility with RB version 3.1 (and lower?)
+        def do_impl_search(self, search, cur_text, new_text):
+                self.do_search(search, cur_text, new_text)
+
         # Shows the context menu of either the sidebar or the source page.
-        def do_impl_show_entry_view_popup(self, view, over_entry):
+        def do_show_entry_view_popup(self, view, over_entry):
                 if view == self.__sidebar:
                         menu = Gtk.Menu.new_from_model(self.__sidebar_menu)
                 else:
                         menu = Gtk.Menu.new_from_model(self.__source_menu)
                 menu.attach_to_widget(self, None)
                 menu.popup(None, None, None, None, 3, Gtk.get_current_event_time())
+
+        # For compatibility with RB version 3.1 (and lower?)
+        def do_impl_show_entry_view_popup(self, view, over_entry):
+                self.do_show_entry_view_popup(view, over_entry)
 
        # Draws the Now Playing sidebar.
         def create_sidebar(self):
@@ -363,7 +375,7 @@ class NowPlayingSource(RB.StaticPlaylistSource):
 
         # Callback for the delete actions of the context menus of both the 
         # sidebar and the source page. Deletes from 'view' all the entries 
-        # with property 'prop' or clears the list if both t'prop' and 'view'
+        # with property 'prop' or clears the list if both 'prop' and 'view'
         # are None
         def menu_delete_entry_callback(self, action, data, prop, view):
                 model = self.get_property("query-model")
