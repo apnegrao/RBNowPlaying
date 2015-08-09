@@ -149,19 +149,16 @@ class NowPlayingSource(RB.StaticPlaylistSource):
 
                 # Create the sidebar context menu actions
                 action = Gio.SimpleAction(name="NP-sidebar-delete-song")
-                action.connect("activate", 
-                        self.menu_delete_entry_callback, 
-                        RB.RhythmDBPropType.TITLE, self.__sidebar)
+                action.connect("activate", self.menu_delete_song_callback, 
+                        self.__sidebar, True)
                 app.add_action(action)
                 action = Gio.SimpleAction(name="NP-sidebar-delete-album")
-                action.connect("activate", 
-                        self.menu_delete_entry_callback,
-                        RB.RhythmDBPropType.ALBUM, self.__sidebar)
+                action.connect("activate", self.menu_delete_by_prop_callback,
+                        RB.RhythmDBPropType.ALBUM, self.__sidebar, True)
                 app.add_action(action)
                 action = Gio.SimpleAction(name="NP-sidebar-delete-artist")
-                action.connect("activate", 
-                        self.menu_delete_entry_callback, 
-                        RB.RhythmDBPropType.ARTIST, self.__sidebar)
+                action.connect("activate", self.menu_delete_by_prop_callback, 
+                        RB.RhythmDBPropType.ARTIST, self.__sidebar, True)
                 app.add_action(action)
                 prop_action = Gio.SimpleAction(name="sidebar-properties")
                 prop_action.connect("activate", 
@@ -169,53 +166,44 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 app.add_action(prop_action)
                 # ...and the source page context menu actions
                 action = Gio.SimpleAction(name="NP-source-delete-song")
-                action.connect("activate", 
-                        self.menu_delete_entry_callback,
-                        RB.RhythmDBPropType.TITLE, self.__entry_view)
+                action.connect("activate", self.menu_delete_song_callback,
+                        self.__entry_view, True)
                 app.add_action(action)
                 action = Gio.SimpleAction(name="NP-source-delete-album")
-                action.connect("activate", 
-                        self.menu_delete_entry_callback,
-                        RB.RhythmDBPropType.ALBUM, self.__entry_view)
+                action.connect("activate", self.menu_delete_by_prop_callback,
+                        RB.RhythmDBPropType.ALBUM, self.__entry_view, True)
                 app.add_action(action)
                 action = Gio.SimpleAction(name="NP-source-delete-artist")
-                action.connect("activate", 
-                        self.menu_delete_entry_callback, 
-                        RB.RhythmDBPropType.ARTIST, self.__entry_view)
+                action.connect("activate", self.menu_delete_by_prop_callback, 
+                        RB.RhythmDBPropType.ARTIST, self.__entry_view, True)
                 app.add_action(action)
 
                 # Delete Other
                 # Create the sidebar context menu actions
                 action = Gio.SimpleAction(name="NP-sidebar-delete-other-song")
-                action.connect("activate", 
-                        self.menu_delete_other_callback, 
-                        RB.RhythmDBPropType.TITLE, self.__sidebar)
+                action.connect("activate", self.menu_delete_song_callback, 
+                        self.__sidebar, False)
                 app.add_action(action)
                 action = Gio.SimpleAction(name="NP-sidebar-delete-other-album")
-                action.connect("activate", 
-                        self.menu_delete_other_callback,
-                        RB.RhythmDBPropType.ALBUM, self.__sidebar)
+                action.connect("activate", self.menu_delete_by_prop_callback,
+                        RB.RhythmDBPropType.ALBUM, self.__sidebar, False)
                 app.add_action(action)
                 action = Gio.SimpleAction(name="NP-sidebar-delete-other-artist")
-                action.connect("activate", 
-                        self.menu_delete_other_callback, 
-                        RB.RhythmDBPropType.ARTIST, self.__sidebar)
+                action.connect("activate", self.menu_delete_by_prop_callback, 
+                        RB.RhythmDBPropType.ARTIST, self.__sidebar, False)
                 app.add_action(action)
                 # ...and the source page context menu actions
                 action = Gio.SimpleAction(name="NP-source-delete-other-song")
-                action.connect("activate", 
-                        self.menu_delete_other_callback,
-                        RB.RhythmDBPropType.TITLE, self.__entry_view)
+                action.connect("activate", self.menu_delete_song_callback,
+                        self.__entry_view, False)
                 app.add_action(action)
                 action = Gio.SimpleAction(name="NP-source-delete-other-album")
-                action.connect("activate", 
-                        self.menu_delete_other_callback,
-                        RB.RhythmDBPropType.ALBUM, self.__entry_view)
+                action.connect("activate", self.menu_delete_by_prop_callback,
+                        RB.RhythmDBPropType.ALBUM, self.__entry_view, False)
                 app.add_action(action)
                 action = Gio.SimpleAction(name="NP-source-delete-other-artist")
-                action.connect("activate", 
-                        self.menu_delete_other_callback, 
-                        RB.RhythmDBPropType.ARTIST, self.__entry_view)
+                action.connect("activate", self.menu_delete_by_prop_callback, 
+                        RB.RhythmDBPropType.ARTIST, self.__entry_view, False)
                 app.add_action(action)
 
                 # Create clear action.
@@ -409,6 +397,16 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                         for entry in selected_entries:
                                 prop_keys.add(entry.get_string(prop))
                         return list(prop_keys)
+
+        # Clears the Now Playing playlist database and updates the
+        # entry views.
+        def clear(self):
+                db = self.get_property("db")
+                new_model = RB.RhythmDBQueryModel.new_empty(
+                        self.get_property("db"))
+                self.set_query_model(new_model)
+                self.__sidebar.set_model(new_model)
+                self.update_titles()
  
         #####################################################################
         #                       CALLBACKS                                   #
@@ -460,44 +458,39 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                         get_property("shell-player")
                 player.stop()
 
-        # Clears the Now Playing playlist database and updates the
-        # entry views.
-        def clear(self):
-                db = self.get_property("db")
-                new_model = RB.RhythmDBQueryModel.new_empty(
-                        self.get_property("db"))
-                self.set_query_model(new_model)
-                self.__sidebar.set_model(new_model)
+        # Callback for the 'delete'/'delete other' context menu actions.
+        # Deletes the selected song if 'delete_selected' is True or all
+        # other songs if 'delete_selected' is false.
+        def menu_delete_song_callback(self, action, data, view, delete_selected):
+                selected_entries = view.get_selected_entries()
+                if delete_selected:
+                        model = self.get_property("query-model")
+                        for entry in selected_entries:
+                                model.remove_entry(entry)
+                else:
+                        self.clear()
+                        model = self.get_property("query-model")
+                        for entry in selected_entries:
+                                model.add_entry(entry, -1)
                 self.update_titles()
 
 
-        # Callback for the delete actions of the context menus of both the 
-        # sidebar and the source page. Deletes from 'view' all the entries 
-        # that have the same values for property 'prop' as the selected entries.
-        def menu_delete_entry_callback(self, action, data, prop, view):
+        # Callback for the 'Remove' and 'Remove Other' actions of the context 
+        # menus of both the sidebar and the source page. Deletes from 'view' all
+        # the entries that have ('Remove') or do not have ('Remove Other') the
+        # same values for property 'prop' as the selected entries, depending on
+        # the value of 'delete_matching' (True = 'Remove', False = 'Remove Other').
+        # TODO: I can optimize the 'Remove Other' process by first clearing the
+        # current model and then adding the entries to keep. Not doing it right
+        # now because foreach does not iterate in song order.
+        def menu_delete_by_prop_callback(self, action, data, prop, view,
+                        delete_matching):
                 model = self.get_property("query-model")
                 selected_props = self.gather_selected_properties_for_view(
                         view, prop)
                 entries_to_delete = set()
                 model.foreach(self.select_entry_by_prop, prop, selected_props, 
-                        entries_to_delete, True)
-                for entry in entries_to_delete:
-                          model.remove_entry(entry)
-                self.update_titles()
-
-        # Callback for the delete other actions of the context menus of both the 
-        # sidebar and the source page. Deletes from 'view' all the entries 
-        # that do not have the same value for property 'prop' as the selected
-        # entries.
-        def menu_delete_other_callback(self, action, data, prop, view):
-                model = self.get_property("query-model")
-                selected_props = self.gather_selected_properties_for_view(
-                        view, prop)
-                entries_to_delete = set()
-                model.foreach(self.select_entry_by_prop, prop, selected_props, 
-                        entries_to_delete, False)
-                #self.clear()
-                #model = self.get_property("query-model")
+                        entries_to_delete, delete_matching)
                 for entry in entries_to_delete:
                           model.remove_entry(entry)
                 self.update_titles()
