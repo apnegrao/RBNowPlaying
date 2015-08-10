@@ -52,6 +52,12 @@ ui_context_menus = """
       </section>
     </submenu>
     <section>
+      <item>
+        <attribute name="label" translatable="yes">Scroll to Playing</attribute>
+        <attribute name="action">app.np-scroll</attribute>
+      </item>
+    </section>
+    <section>
       <attribute name="rb-plugin-menu-link">source-popup</attribute>
     </section>
     <section>
@@ -61,6 +67,9 @@ ui_context_menus = """
       </item>
     </section>
   </menu>
+  <!---------------------------------------------------------->
+  <!--                       SIDEBAR                        -->
+  <!---------------------------------------------------------->
   <menu id="np-sidebar-popup">
     <section>
       <item>
@@ -103,6 +112,12 @@ ui_context_menus = """
       </section>
     </submenu>
     <section>
+      <item>
+        <attribute name="label" translatable="yes">Scroll to Playing</attribute>
+        <attribute name="action">app.np-bar-scroll</attribute>
+      </item>
+    </section>
+    <section>
       <attribute name="rb-plugin-menu-link">sidebar-popup</attribute>
     </section>
     <section>
@@ -125,6 +140,9 @@ class NowPlayingSource(RB.StaticPlaylistSource):
 
         def setup_actions(self):
                 app = Gio.Application.get_default()
+                sidebar = self.__sidebar
+                view = self.__entry_view
+
                 # Create action to add items to Now Playing
                 browser_action = Gio.SimpleAction(name="add-to-now-playing")
                 browser_action.connect("activate", self.add_entries_callback)
@@ -134,17 +152,26 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 item.set_label("Add to Now Playing")
                 item.set_detailed_action("app.add-to-np")
                 app.add_plugin_menu_item('browser-popup', 'add-to-np', item)
+
                 # Create sidebar properties action
                 prop_action = Gio.SimpleAction(name="sidebar-properties")
                 prop_action.connect("activate", self.sidebar_properties_callback)
                 app.add_action(prop_action)
+
                 # Create clear action.
                 action = Gio.SimpleAction(name="np-clear")
                 action.connect("activate", self.clear_callback)
                 app.add_action(action)
+
+                # Scroll to Playing actions
+                action = Gio.SimpleAction(name="np-scroll")
+                action.connect("activate", self.scroll_callback, view)
+                app.add_action(action)
+                action = Gio.SimpleAction(name="np-bar-scroll")
+                action.connect("activate", self.scroll_callback, sidebar)
+                app.add_action(action)
+                
                 # Create Remove action arrays:
-                sidebar = self.__sidebar
-                view = self.__entry_view
                 # Remove song
                 remove_song_actions = [
                         ["np-bar-rm-song", sidebar, True],
@@ -227,7 +254,6 @@ class NowPlayingSource(RB.StaticPlaylistSource):
 
                 print("DEACTIVATING")
                 # Remove menu action
-                shell = self.get_property("shell")
                 app = Gio.Application.get_default()
                 app.remove_action('add-to-now-playing')
                 app.remove_plugin_menu_item('browser-popup', 'add-to-np')
@@ -246,8 +272,8 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 # Clear query model
                 query_model = self.get_property("query-model")
                 iter = query_model.get_iter_first() 
-                self.get_property("shell").remove_widget (
-                        self.__sidebar, RB.ShellUILocation.RIGHT_SIDEBAR)
+                shell.remove_widget (self.__sidebar, 
+                        RB.ShellUILocation.RIGHT_SIDEBAR)
                 # Set the new source and playing entry
                 # XXX: Maybe I should just stop playback and scroll to the
                 # previously playing entry
@@ -333,8 +359,8 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 super(NowPlayingSource,self).setup_entry_view(sidebar)
                 query_model = self.get_property("query-model")
                 sidebar.set_model(query_model)
-                self.get_property("shell").add_widget (
-                        sidebar, RB.ShellUILocation.RIGHT_SIDEBAR, True, True)
+                shell.add_widget (sidebar, RB.ShellUILocation.RIGHT_SIDEBAR,
+                        True, True)
                 sidebar.set_visible(True)
                 sidebar.show_all()
 
@@ -392,6 +418,7 @@ class NowPlayingSource(RB.StaticPlaylistSource):
         #####################################################################
         #                       CALLBACKS                                   #
         #####################################################################
+        #############################SIGNALS#################################
         # When a source is selected to play, we intercept that call and replace
         # the selected source with the NowPlayingSource.
         # XXX: Replacing is not the most efficient/elegant solution...
@@ -432,11 +459,45 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 playing_source_view.set_state(RB.EntryViewState.PLAYING)
                 self.update_titles()
 
+        # Callback to the "entry-activated" signal of the sidebar. Selects the
+        # activated entry as the playing entry.
+        def sidebar_entry_activated_callback(self, sidebar, selected_entry):
+                player = self.get_property("shell").get_property("shell-player")
+                player.play_entry(selected_entry, self)
+
+        
+        # Updates the playing status symbol (play/pause) next to the playing
+        # entry in the NowPlaying source page and sidebar.
+        def playing_changed_callback(self, player, playing):
+                print("PLAY STATE CHANGED!")
+                if not self.__playing_source:
+                        return
+                entry_view = self.__entry_view
+                sidebar = self.__sidebar
+                state = None
+                if playing:
+                        state = RB.EntryViewState.PLAYING
+                else:
+                        state = RB.EntryViewState.PAUSED
+                # Update the playing symbol EVERYWHERE
+                entry_view.set_state(state)
+                sidebar.set_state(state)
+                self.__playing_source.get_entry_view().set_state(state)
+
+                # Scroll to playing entry. 
+                # FIXME: Scroll only if it isn't visible.
+                # FIXME: Stop auto scrolling after adding 'Scroll to playing'
+                playing_entry = player.get_playing_entry()
+                if playing_entry:
+                        entry_view.scroll_to_entry(playing_entry)
+                        sidebar.scroll_to_entry(playing_entry)
+
+        #################################ACTIONS#############################
+
         # Callback to the clear action of the context menus.
         def clear_callback(self, action, data):
                 self.clear()                
-                player = self.get_property("shell").\
-                        get_property("shell-player")
+                player = self.get_property("shell").get_property("shell-player")
                 player.stop()
 
         # Callback for the 'Remove'/'Remove other' context menu actions.
@@ -502,8 +563,8 @@ class NowPlayingSource(RB.StaticPlaylistSource):
         def add_entries_callback(self, action, data):
                 model = self.get_property("query-model")
                 shell = self.get_property("shell")
-                library_source = shell.get_property("library-source")
-                selected = library_source.get_entry_view().get_selected_entries()
+                lib_source = shell.get_property("library-source")
+                selected = lib_source.get_entry_view().get_selected_entries()
                 for selected_entry in selected:
                         model.add_entry(selected_entry, -1)
                 self.update_titles()
@@ -514,37 +575,12 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 song_info = RB.SongInfo.new(self, self.__sidebar)
                 song_info.show_all()
 
-
-        # Callback to the "entry-activated" signal of the sidebar. Selects the
-        # activated entry as the playing entry.
-        def sidebar_entry_activated_callback(self, sidebar, selected_entry):
+        # Callback for the 'Scroll to Playing' action.
+        def scroll_callback(self, action, data, view):
                 player = self.get_property("shell").get_property("shell-player")
-                player.play_entry(selected_entry, self)
-
-        
-        # Updates the playing status symbol (play/pause) next to the playing
-        # entry in the NowPlaying source page and sidebar.
-        def playing_changed_callback(self, player, playing):
-                print("PLAY STATE CHANGED!")
-                if not self.__playing_source:
-                        return
-                entry_view = self.__entry_view
-                sidebar = self.__sidebar
-                state = None
-                if playing:
-                        state = RB.EntryViewState.PLAYING
-                else:
-                        state = RB.EntryViewState.PAUSED
-                # Update the playing symbol EVERYWHERE
-                entry_view.set_state(state)
-                sidebar.set_state(state)
-                self.__playing_source.get_entry_view().set_state(state)
-
-                # Scroll to playing entry. FIXME: Scroll only if it isn't visible.
                 playing_entry = player.get_playing_entry()
                 if playing_entry:
-                        entry_view.scroll_to_entry(playing_entry)
-                        sidebar.scroll_to_entry(playing_entry)
+                        view.scroll_to_entry(playing_entry)
         
 ###################################################
 #                 PLUGIN INIT CODE                #
@@ -555,7 +591,6 @@ class NowPlaying(GObject.Object, Peas.Activatable):
 
         def do_activate(self):
                 shell = self.object
-                db = shell.get_property("db")
 
                 # create Now Playing source
                 self.__source = GObject.new(
