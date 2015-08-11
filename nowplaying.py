@@ -142,16 +142,28 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 app = Gio.Application.get_default()
                 sidebar = self.__sidebar
                 view = self.__entry_view
+                song = RB.RhythmDBPropType.TITLE
+                artist = RB.RhythmDBPropType.ARTIST
+                album = RB.RhythmDBPropType.ALBUM
 
                 # Create action to add items to Now Playing
-                browser_action = Gio.SimpleAction(name="add-to-now-playing")
-                browser_action.connect("activate", self.add_entries_callback)
-                app.add_action(browser_action)
+                np_browser_popup = [
+                        ["Song", "add-song-to-np", song],
+                        ["Album", "add-album-to-np", album],
+                        ["Artist", "add-artist-to-np", artist]
+                ]
+                callback = self.add_entries_callback
+                link = Gio.Menu()
+                for entry in np_browser_popup:
+                        action = Gio.SimpleAction(name=entry[1])
+                        action.connect("activate", callback, entry[2])
+                        app.add_action(action)                        
+                        link.insert(-1, entry[0], "app." + entry[1])
                 # Add the corresponding menu item to the library
-                item = Gio.MenuItem()
-                item.set_label("Add to Now Playing")
-                item.set_detailed_action("app.add-to-np")
-                app.add_plugin_menu_item('browser-popup', 'add-to-np', item)
+                menu = Gio.MenuItem()
+                menu.set_label("Add to Now Playing")
+                menu.set_submenu(link)
+                app.add_plugin_menu_item('browser-popup', 'add-to-np-link', menu)
 
                 # Create sidebar properties action
                 prop_action = Gio.SimpleAction(name="sidebar-properties")
@@ -185,8 +197,6 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                         action.connect("activate", callback, entry[1], entry[2])
                         app.add_action(action)
                 # Remove by prop
-                artist = RB.RhythmDBPropType.ARTIST
-                album = RB.RhythmDBPropType.ALBUM
                 remove_by_prop_actions = [
                         # Remove
                         ["np-bar-rm-album", album, sidebar, True],
@@ -397,13 +407,39 @@ class NowPlayingSource(RB.StaticPlaylistSource):
         # in 'view'.
         def gather_selected_properties_for_view(self, view, prop):
                 if view == self.__entry_view:
-                        return self.gather_selected_properties (prop)
+                        return set(self.gather_selected_properties (prop))
                 else:
                         selected_entries = view.get_selected_entries()
                         prop_keys = set()
                         for entry in selected_entries:
                                 prop_keys.add(entry.get_string(prop))
-                        return list(prop_keys)
+                        return prop_keys
+
+        # Returns all the entries in 'model' whose 'prop' value matches one
+        # of the values in 'sel_props' ('sel_matching' = True) or all the entries
+        # in 'model' whose 'prop' values doesn't match any value in 'sel_props'
+        # ('sel_matching' = False)
+        def gather_entries_by_prop(self, model, sel_props, prop, sel_matching):
+                entries = []
+                model.foreach(self.select_entry_by_prop, prop, 
+                        sel_props, entries, sel_matching)
+                return entries
+
+        # Used by 'gather_entries_by_prop' (called by the foreach
+        # function of the query model). Iteratively contructs a list with the 
+        # entries that match/don't match a given property. If 'select_matching'
+        # is True, the entry (given by 'iter') is selected if the value of its
+        # 'prop' property is in 'prop_set'. If 'select_matching' is False, the
+        # entry is selected is 'prop' is not in 'prop_set'.
+        def select_entry_by_prop(self, model, path, iter, prop, prop_set, 
+                        selected_entries, select_matching):
+                def xor(A, B):
+                        return A != B
+                entry = model.iter_to_entry(iter)
+                entry_prop = entry.get_string(prop)
+                if not xor(entry_prop in prop_set, select_matching):
+                        selected_entries.append(entry)
+                return False
 
         # Clears the Now Playing playlist database and updates the
         # entry views.
@@ -440,11 +476,9 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 self.__playing_source = new_source
                 playing_source_view = new_source.get_entry_view()
                 
+                # TODO: Use 'clear' method
                 # Clear current selection
                 query_model = self.get_property("query-model")
-                #for treerow in query_model:
-                #        entry, path = list(treerow)
-                #        self.remove_entry(entry)
                 # Add new entries
                 new_source_model = new_source.get_property("query-model")
                 new_model = RB.RhythmDBQueryModel.new_empty(
@@ -452,9 +486,6 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 new_model.copy_contents(new_source_model)
                 self.set_query_model(new_model)
                 self.__sidebar.set_model(new_model)
-                #for treerow in new_source_model:
-                #        entry, path = list(treerow)
-                #        self.add_entry(entry, -1)
                 player.set_playing_source(self)
                 playing_source_view.set_state(RB.EntryViewState.PLAYING)
                 self.update_titles()
@@ -535,38 +566,30 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 model = self.get_property("query-model")
                 selected_props = self.gather_selected_properties_for_view(
                         view, prop)
-                entries_to_remove = set()
-                model.foreach(self.select_entry_by_prop, prop, selected_props, 
-                        entries_to_remove, remove_matching)
+                entries_to_remove = self.gather_entries_by_prop(
+                                model, selected_props, prop, remove_matching)
                 for entry in entries_to_remove:
                           model.remove_entry(entry)
                 self.update_titles()
 
-        # Used by the remove actions callback functions (called by the foreach
-        # function of the query model). Iteratively contructs a list with the 
-        # entries that match/don't match a given property. If 'select_matching'
-        # is True, the entry (given by 'iter') is selected if the value of its
-        # 'prop' property is in 'prop_set'. If 'select_matching' is False, the
-        # entry is selected is 'prop' is not in 'prop_set'.
-        def select_entry_by_prop(self, model, path, iter, prop, prop_set, 
-                        selected_entries, select_matching):
-                def xor(A, B):
-                        return A != B
-                entry = model.iter_to_entry(iter)
-                entry_prop = entry.get_string(prop)
-                if not xor(entry_prop in prop_set, select_matching):
-                        selected_entries.add(entry)
-                return False
-
-        # Callback for the 'Add to Now Playing' action we added to the 
-        # context menu of the library browser.
-        def add_entries_callback(self, action, data):
+        # Callback for the 'Add to Now Playing' action we added to the context
+        # menu of the library. The 'add_key' param is an RB.RhythmDBPropType that
+        # determines what should be added (song, album or artist)
+        def add_entries_callback(self, action, data, add_key):
                 model = self.get_property("query-model")
                 shell = self.get_property("shell")
                 lib_source = shell.get_property("library-source")
-                selected = lib_source.get_entry_view().get_selected_entries()
-                for selected_entry in selected:
-                        model.add_entry(selected_entry, -1)
+                lib_view = lib_source.get_entry_view()
+                entries_to_add = []
+                if add_key == RB.RhythmDBPropType.TITLE:
+                        entries_to_add = lib_view.get_selected_entries()
+                else:
+                        sel_props = lib_source.gather_selected_properties(add_key)
+                        lib_model = lib_source.get_property("base_query_model")
+                        entries_to_add = self.gather_entries_by_prop(
+                                lib_model, sel_props, add_key, True)
+                for entry in entries_to_add:
+                        model.add_entry(entry, -1)
                 self.update_titles()
                 return
 
