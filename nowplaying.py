@@ -138,83 +138,64 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 self.__signals = None
                 self.__filter = None
 
+        # Creates the actions and lib browser popup entries
         def setup_actions(self):
                 app = Gio.Application.get_default()
                 sidebar = self.__sidebar
                 view = self.__entry_view
+                player = self.get_property("shell").get_property("shell-player")
+                browser_cb = self.add_entries_callback
+                song_cb = self.menu_remove_song_callback
+                rm_cb = self.menu_remove_by_prop_callback
                 song = RB.RhythmDBPropType.TITLE
-                artist = RB.RhythmDBPropType.ARTIST
                 album = RB.RhythmDBPropType.ALBUM
+                artist = RB.RhythmDBPropType.ARTIST
 
-                # Create action to add items to Now Playing
-                np_browser_popup = [
-                        ["Song", "add-song-to-np", song],
-                        ["Album", "add-album-to-np", album],
-                        ["Artist", "add-artist-to-np", artist]
+                # Create action array:
+                actions = [
+                        # Add to Now Playing
+                        ["add-song-to-np", browser_cb, song],
+                        ["add-album-to-np", browser_cb, album],
+                        ["add-artist-to-np", browser_cb, artist],
+                        # Sidebar properties
+                        ["sidebar-properties", self.sidebar_properties_callback],
+                        # Clear
+                        ["np-clear", self.clear_callback],
+                        # Scroll to playing
+                        ["np-scroll", self.scroll_callback, view],
+                        ["np-bar-scroll", self.scroll_callback, sidebar],
+                        # Remove song
+                        ["np-bar-rm-song", song_cb, sidebar, True, player],
+                        ["np-rm-song", song_cb, view, True, player],
+                        ["np-bar-rm-other-song", song_cb, sidebar, False, player],
+                        ["np-rm-other-song", song_cb, view, False, player],
+                        # Remove
+                        ["np-bar-rm-album", rm_cb, album, sidebar, True],
+                        ["np-bar-rm-artist", rm_cb, artist, sidebar, True],
+                        ["np-rm-album", rm_cb, album, view, True],
+                        ["np-rm-artist", rm_cb, artist, view, True],
+                        # Remove Other
+                        ["np-bar-rm-other-album", rm_cb, album, sidebar, False],
+                        ["np-bar-rm-other-artist", rm_cb, artist, sidebar, False],
+                        ["np-rm-other-album", rm_cb, album, view, False],
+                        ["np-rm-other-artist", rm_cb, artist, view, False]
                 ]
-                callback = self.add_entries_callback
+                # Create, activate and add actions
+                for entry in actions:
+                        action = Gio.SimpleAction(name=entry[0])
+                        action.connect("activate", *entry[1:])
+                        app.add_action(action)
+
+                # Create lib browser popup NP entries
                 link = Gio.Menu()
-                for entry in np_browser_popup:
-                        action = Gio.SimpleAction(name=entry[1])
-                        action.connect("activate", callback, entry[2])
-                        app.add_action(action)                        
-                        link.insert(-1, entry[0], "app." + entry[1])
-                # Add the corresponding menu item to the library
+                link.insert(-1, "Song", "app.add-song-to-np")
+                link.insert(-1, "Album", "app.add-album-to-np")
+                link.insert(-1, "Artist", "app.add-artist-to-np")
                 menu = Gio.MenuItem()
                 menu.set_label("Add to Now Playing")
                 menu.set_submenu(link)
                 app.add_plugin_menu_item('browser-popup', 'add-to-np-link', menu)
 
-                # Create sidebar properties action
-                prop_action = Gio.SimpleAction(name="sidebar-properties")
-                prop_action.connect("activate", self.sidebar_properties_callback)
-                app.add_action(prop_action)
-
-                # Create clear action.
-                action = Gio.SimpleAction(name="np-clear")
-                action.connect("activate", self.clear_callback)
-                app.add_action(action)
-
-                # Scroll to Playing actions
-                action = Gio.SimpleAction(name="np-scroll")
-                action.connect("activate", self.scroll_callback, view)
-                app.add_action(action)
-                action = Gio.SimpleAction(name="np-bar-scroll")
-                action.connect("activate", self.scroll_callback, sidebar)
-                app.add_action(action)
-                
-                # Create Remove action arrays:
-                # Remove song
-                remove_song_actions = [
-                        ["np-bar-rm-song", sidebar, True],
-                        ["np-rm-song", view, True],
-                        ["np-bar-rm-other-song", sidebar, False],
-                        ["np-rm-other-song", view, False]
-                ]
-                callback = self.menu_remove_song_callback
-                for entry in remove_song_actions:
-                        action = Gio.SimpleAction(name=entry[0])
-                        action.connect("activate", callback, entry[1], entry[2])
-                        app.add_action(action)
-                # Remove by prop
-                remove_by_prop_actions = [
-                        # Remove
-                        ["np-bar-rm-album", album, sidebar, True],
-                        ["np-bar-rm-artist", artist, sidebar, True],
-                        ["np-rm-album", album, view, True],
-                        ["np-rm-artist", artist, view, True],
-                        # Remove Other
-                        ["np-bar-rm-other-album", album, sidebar, False],
-                        ["np-bar-rm-other-artist", artist, sidebar, False],
-                        ["np-rm-other-album", album, view, False],
-                        ["np-rm-other-artist", artist, view, False]
-                ]
-                callback = self.menu_remove_by_prop_callback
-                for entry in remove_by_prop_actions:
-                        action = Gio.SimpleAction(name=entry[0])
-                        action.connect("activate", callback, 
-                                entry[1], entry[2], entry[3])
-                        app.add_action(action)
                 # Create the context menus from XML
                 builder = Gtk.Builder.new_from_string(ui_context_menus,
                         len(ui_context_menus))
@@ -254,7 +235,6 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 if playing_source:
                         shell_player.stop()
                         shell_player.set_playing_source(playing_source)
-                        shell_player.stop()
                                 
 
         # Deactivates the source.
@@ -271,7 +251,6 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 # Disconnect from signals
                 for signal_id, signal_emitter in self.__signals:
                         signal_emitter.disconnect(signal_id)
-                del self.__signals
 
                 # Get the current playing status to use later
                 shell = self.get_property("shell")
@@ -279,23 +258,14 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 ret, playing = player.get_playing()
                 playing_entry = player.get_playing_entry()
 
-                # Clear query model
-                query_model = self.get_property("query-model")
-                iter = query_model.get_iter_first() 
+                # Remove sidebar
                 shell.remove_widget (self.__sidebar, 
                         RB.ShellUILocation.RIGHT_SIDEBAR)
-                # Set the new source and playing entry
-                # XXX: Maybe I should just stop playback and scroll to the
-                # previously playing entry
-                if self.__playing_source:
-                        if ret and playing and playing_entry:
-                                player.play_entry(playing_entry, 
-                                        self.__playing_source)
-
                 # Remove display page
                 shell.get_property("display-page-model").remove_page(self)
-
-                del self.__playing_source
+                # Stop playback. FIXME: Make this transition smoother.
+                if playing:
+                        player.stop()
 
         # Prevent the source page from being renamed.
         def do_can_rename(self):
@@ -476,16 +446,12 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 self.__playing_source = new_source
                 playing_source_view = new_source.get_entry_view()
                 
-                # TODO: Use 'clear' method
                 # Clear current selection
-                query_model = self.get_property("query-model")
+                self.clear()
                 # Add new entries
                 new_source_model = new_source.get_property("query-model")
-                new_model = RB.RhythmDBQueryModel.new_empty(
-                        self.get_property("db"))
-                new_model.copy_contents(new_source_model)
-                self.set_query_model(new_model)
-                self.__sidebar.set_model(new_model)
+                query_model = self.get_property("query-model")
+                query_model.copy_contents(new_source_model)
                 player.set_playing_source(self)
                 playing_source_view.set_state(RB.EntryViewState.PLAYING)
                 self.update_titles()
@@ -534,7 +500,8 @@ class NowPlayingSource(RB.StaticPlaylistSource):
         # Callback for the 'Remove'/'Remove other' context menu actions.
         # Removes the selected song if 'remove_selected' is True; removes all
         # other songs if 'remove_selected' is false.
-        def menu_remove_song_callback(self, action, data, view, remove_selected):
+        def menu_remove_song_callback(self, action, data, view, remove_selected,
+                        player):
                 selected_entries = view.get_selected_entries()
                 if remove_selected:
                         model = self.get_property("query-model")
@@ -545,8 +512,6 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                         model = self.get_property("query-model")
                         for entry in selected_entries:
                                 model.add_entry(entry, -1)
-                        player = self.get_property("shell").\
-                                get_property("shell-player")
                         playing_entry = player.get_playing_entry()
                         if not playing_entry in selected_entries:
                                 player.do_next()
@@ -558,8 +523,8 @@ class NowPlayingSource(RB.StaticPlaylistSource):
         # the entries that have ('Remove') or do not have ('Remove Other') the
         # same values for property 'prop' as the selected entries, depending on
         # the value of 'remove_matching' (True = 'Remove', False = 'Remove Other').
-        # TODO: I can optimize the 'Remove Other' process by first clearing the
-        # current model and then adding the entries to keep. Not doing it right
+        # TODO: Maybe I can optimize the 'Remove Other' process by first clearing
+        # the current model and then adding the entries to keep. Not doing it right
         # now because foreach does not iterate in song order.
         def menu_remove_by_prop_callback(self, action, data, prop, view,
                         remove_matching):
