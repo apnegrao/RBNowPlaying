@@ -135,6 +135,7 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 super(NowPlayingSource,self).__init__()
                 self.__activated = False
                 self.__playing_source = None
+                self.__playing_source_signals = []
                 self.__signals = None
                 self.__filter = None
 
@@ -431,36 +432,137 @@ class NowPlayingSource(RB.StaticPlaylistSource):
         def source_changed_callback(self, player, new_source):
                 if new_source == None:
                         print("NO SOURCE SELECTED")
-                        self.__playing_source = None
                         return
 
                 print("NEW SOURCE PLAYING: " + new_source.get_property("name"))
 
-                if new_source == self:
+                if new_source == self:  # XXX: This should no longer be possible
                         print("IT'S US!!")
                         return
 
-                # XXX: What if they are the same?
-                if self.__playing_source == new_source:
-                        print("SAME SOURCE, DOESNT COUNT")
-                self.__playing_source = new_source
+                # This seems to occur only when returning from Stop. Let's just
+                # resume playing from the Now Playing playlist. XXX: If the user
+                # wants to select something else, he needs to double click on it.
+                model = self.get_property("query_model")
+                empty_model = model.get_iter_first() is None
+                source_is_new = self.__playing_source != new_source
+                if not source_is_new and not empty_model:
+                        print("SAME SOURCE, IGNORING SELECTION")
+                        bar_entries = self.__sidebar.get_selected_entries()
+                        page_entries = self.__entry_view.get_selected_entries()
+                        entry_to_play = None
+                        if bar_entries:
+                                entry_to_play = bar_entries[0]
+                        elif page_entries:
+                                entry_to_play = page_entries[0]
+                        else:
+                                iter = model.get_iter_first()
+                                entry_to_play = model.iter_to_entry(iter)
+                        player.play_entry(entry_to_play, self.__playing_source)
+                        return
+
+                if empty_model and not source_is_new:# Restore playing source data
+                        self.__playing_source.set_property("query-model", 
+                                self.__playing_source_model)
+
+                # If new source is different
+                if source_is_new:
+                        # Disconnect from signals
+                        for signal_id, emiter in self.__playing_source_signals:
+                                emiter.disconnect(signal_id)
+                        # Set new data
+                        self.__playing_source = new_source
+                        self.__playing_source_model = \
+                                new_source.get_property("query-model")
+
+                if new_source.get_entry_view() and self.__playing_source_model:
+                        # Clear current selection
+                        self.clear()
+                        # Add new entries
+                        query_model = self.get_property("query-model")
+                        query_model.copy_contents(self.__playing_source_model)
+                        # FIXME: Instead of doing the next line (which is only 
+                        # here to allow for Remove *, I can change the 'remove'
+                        # methods so they also remove the selected entries from
+                        # the playing source query model)
+                        new_source.set_property("query-model", query_model)
+                        if source_is_new: # Connect only if new source is new
+                                self.connect_signals_for_control(new_source)
+                self.update_titles()
+
+        def connect_signals_for_control(self, new_source):
+                signals = self.__playing_source_signals = []
                 playing_source_view = new_source.get_entry_view()
-                
+                id = new_source.connect("filter-changed", 
+                        self.filter_changed_callback)
+                signals.append((id, new_source))
+                id = playing_source_view.connect("entry-activated",
+                        self.entry_activated)
+                signals.append((id, playing_source_view))
+                for prop_view in new_source.get_property_views():
+                      id = prop_view.connect("property_activated", 
+                            self.property_activated)
+                      signals.append((id, prop_view))
+                # FIXME: The next signals should only be connected for non
+                # browser sources.
+                # FIXME: For Playlist sources use the "base-query-model"
+                new_source_model = new_source.get_property("query-model")
+                id = new_source_model.connect("row_inserted", 
+                        self.row_inserted_callback)
+                signals.append((id, new_source_model))
+                id = new_source_model.connect("row-deleted", 
+                        self.row_deleted_callback)
+                signals.append((id, new_source_model))
+
+        def row_inserted_callback(self, model, path, iter):
+                pass
+
+        def row_deleted_callback(self, model, path):
+                pass
+
+        def filter_changed_callback(self, source):
+                print("FILTER CHANGED!")
+                if self.__playing_source == None:
+                        return
+                self.__playing_source_model = source.get_property("query-model")
+                model = self.get_property("query-model")
+                source.set_property("query-model", model)
+
+        def property_activated(self, prop_view, prop_name):
+                print("PROPERTY ACTIVATED")
+                source = self.__playing_source
+                new_model = source.get_entry_view().get_property("model")
+                iter = new_model.get_iter_first()
+                if not iter:   # The query-model of the source has not yet been
+                        return  # updated.
                 # Clear current selection
                 self.clear()
                 # Add new entries
-                new_source_model = new_source.get_property("query-model")
                 query_model = self.get_property("query-model")
-                query_model.copy_contents(new_source_model)
-                player.set_playing_source(self)
-                playing_source_view.set_state(RB.EntryViewState.PLAYING)
+                query_model.copy_contents(new_model)
+                player = self.get_property("shell").get_property("shell-player")
+                entry = query_model.iter_to_entry(query_model.get_iter_first())
+                player.play_entry(entry, source)
+                source.set_property("query-model", query_model)
+                self.update_titles()
+        
+        def entry_activated(self, view, entry):
+                print("ENTRY ACTIVATED")
+                 # Clear current selection
+                self.clear()
+                # Add new entries
+                source = self.__playing_source
+                new_model = source.get_entry_view().get_property("model")
+                query_model = self.get_property("query-model")
+                query_model.copy_contents(new_model)
+                source.set_property("query-model", query_model)
                 self.update_titles()
 
         # Callback to the "entry-activated" signal of the sidebar. Selects the
         # activated entry as the playing entry.
         def sidebar_entry_activated_callback(self, sidebar, selected_entry):
                 player = self.get_property("shell").get_property("shell-player")
-                player.play_entry(selected_entry, self)
+                player.play_entry(selected_entry, self.__playing_source)
 
         
         # Updates the playing status symbol (play/pause) next to the playing
@@ -512,6 +614,7 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                         model = self.get_property("query-model")
                         for entry in selected_entries:
                                 model.add_entry(entry, -1)
+                        self.__playing_source.set_property("query-model", model)
                         playing_entry = player.get_playing_entry()
                         if not playing_entry in selected_entries:
                                 player.do_next()
