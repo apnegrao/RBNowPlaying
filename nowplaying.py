@@ -138,6 +138,7 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 self.__playing_source_signals = []
                 self.__signals = None
                 self.__filter = None
+                self.__source_is_lib = False
 
         # Creates the actions and lib browser popup entries
         def setup_actions(self):
@@ -474,6 +475,7 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                         self.__playing_source = new_source
                         self.__playing_source_model = \
                                 new_source.get_property("query-model")
+                        self.__playing_source_signals = []
 
                 if new_source.get_entry_view() and self.__playing_source_model:
                         # Clear current selection
@@ -481,11 +483,13 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                         # Add new entries
                         query_model = self.get_property("query-model")
                         query_model.copy_contents(self.__playing_source_model)
-                        # FIXME: Instead of doing the next line (which is only 
-                        # here to allow for Remove *, I can change the 'remove'
-                        # methods so they also remove the selected entries from
-                        # the playing source query model)
-                        new_source.set_property("query-model", query_model)
+                        shell = self.get_property("shell")
+                        lib_source = shell.get_property("library-source")
+                        if new_source == lib_source:
+                                new_source.set_property("query-model", query_model)
+                                self.__source_is_lib = True
+                        else:
+                                self.__source_is_lib = False
                         if source_is_new: # Connect only if new source is new
                                 self.connect_signals_for_control(new_source)
                 self.update_titles()
@@ -515,10 +519,19 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 signals.append((id, new_source_model))
 
         def row_inserted_callback(self, model, path, iter):
-                pass
+                print("ROW INSERTED")
+                entry = model.iter_to_entry(iter)
+                query_model = self.get_property("query-model")
+                query_model.add_entry(entry, -1)
+                #self.update_titles()
 
         def row_deleted_callback(self, model, path):
-                pass
+                print("ROW DELETED")
+                query_model = self.get_property("query-model")
+                iter = query_model.get_iter(path)
+                entry = query_model.iter_to_entry(iter)
+                query_model.remove_entry(entry)
+                #self.update_titles()
 
         def filter_changed_callback(self, source):
                 print("FILTER CHANGED!")
