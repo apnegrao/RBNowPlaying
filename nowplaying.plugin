@@ -1,6 +1,6 @@
 [Plugin]
 Loader=python3
-Module=nowplaying
+Module=RBNowPlaying
 IAge=2
 Depends=rb
 Name=Now Playing Playlist
