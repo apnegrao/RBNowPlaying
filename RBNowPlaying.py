@@ -426,16 +426,16 @@ class NowPlayingSource(RB.StaticPlaylistSource):
         def row_inserted_callback(self, model, path, iter):
                 print("ROW INSERTED")
                 entry = model.iter_to_entry(iter)
-                # FIXME: Insert at the actual index given by the path!
+                index = path.get_indices()[0]
                 query_model = self.get_property("query-model")
-                query_model.add_entry(entry, -1)
+                query_model.add_entry(entry, index)
                 #self.update_titles()
 
         def row_deleted_callback(self, model, path):
                 query_model = self.get_property("query-model")
                 if query_model.iter_n_children() == 0:
                         # XXX: This only happens after a clear, which leaves the
-                        # NP query_model empty, but doesn't clear the query model
+                        # NP query_model empty, but doesn't clear the query_model
                         # of the __playing_source.
                         return
                 print("ROW DELETED")
