@@ -349,6 +349,11 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 source_is_new = self.__playing_source != new_source
                 if not source_is_new and not empty_model:
                         print("SAME SOURCE, IGNORING SELECTION")
+                        # FIXME: I'm complicating things: just start
+                        # playing from the top of the playlist.
+                        ret, playing = player.get_playing()
+                        if not playing:
+                                return
                         bar_entries = self.__sidebar.get_selected_entries()
                         page_entries = self.__entry_view.get_selected_entries()
                         entry_to_play = None
@@ -371,11 +376,11 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                         # Disconnect from signals
                         for signal_id, emiter in self.__playing_source_signals:
                                 emiter.disconnect(signal_id)
+                        self.__playing_source_signals = []
                         # Set new data
                         self.__playing_source = new_source
                         self.__playing_source_model = \
                                 new_source.get_property("query-model")
-                        self.__playing_source_signals = []
 
                 if new_source.get_entry_view() and self.__playing_source_model:
                         # Clear current selection
@@ -421,15 +426,20 @@ class NowPlayingSource(RB.StaticPlaylistSource):
         def row_inserted_callback(self, model, path, iter):
                 print("ROW INSERTED")
                 entry = model.iter_to_entry(iter)
+                # FIXME: Insert at the actual index given by the path!
                 query_model = self.get_property("query-model")
                 query_model.add_entry(entry, -1)
                 #self.update_titles()
 
         def row_deleted_callback(self, model, path):
-                print("ROW DELETED")
                 query_model = self.get_property("query-model")
-                iter = query_model.get_iter(path)
-                entry = query_model.iter_to_entry(iter)
+                if query_model.iter_n_children() == 0:
+                        # XXX: This only happens after a clear, which leaves the
+                        # NP query_model empty, but doesn't clear the query model
+                        # of the __playing_source.
+                        return
+                print("ROW DELETED")
+                entry = query_model.tree_path_to_entry(path)
                 query_model.remove_entry(entry)
                 #self.update_titles()
 
