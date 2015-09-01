@@ -96,7 +96,10 @@ class NowPlayingSource(RB.StaticPlaylistSource):
 
                 # Create the context menus from XML
                 builder = Gtk.Builder()
-                builder.add_from_file(rb.find_plugin_file(self.plugin, "ui/rbnp_context_menu.ui"))
+                filename = rb.find_plugin_file(self.plugin, "ui/rbnp_context_menu.ui")
+                if not filename:
+                        filename = "./ui/rbnp_context_menu.ui"
+                builder.add_from_file(filename)
                 self.__source_menu = builder.get_object("np-source-popup")
                 self.__sidebar_menu = builder.get_object("np-sidebar-popup")
 
