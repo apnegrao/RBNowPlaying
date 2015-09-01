@@ -1,138 +1,34 @@
 # -*- Mode: python; coding: utf-8; tab-width: 8; indent-tabs-mode: t; -*-
 # vim: expandtab shiftwidth=8 softtabstop=8 tabstop=8
+#
+# Copyright (C) 2015 - apnegrao
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2, or (at your option)
+# any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA.
 
-import os
 
-import rb, operator
+import operator
+import rb
 from gi.repository import RB
-from gi.repository import GObject, Peas, Gtk, Gio, GdkPixbuf
-
-#FIXME: Move this to a .ui file
-ui_context_menus = """ 
-<interface>
-  <menu id="np-source-popup">
-    <section>
-      <item>
-        <attribute name="label" translatable="yes">Clear</attribute>
-	<attribute name="action">app.np-clear</attribute>
-      </item>
-    </section>
-    <submenu>
-      <attribute name="label" translatable="yes">Remove</attribute>
-      <section>
-        <item>
-      	  <attribute name="label" translatable="yes">Song</attribute>
-	  <attribute name="action">app.np-rm-song</attribute>
-        </item>
-        <item>
-      	  <attribute name="label" translatable="yes">Album</attribute>
-	  <attribute name="action">app.np-rm-album</attribute>
-        </item>
-        <item>
-      	  <attribute name="label" translatable="yes">Artist</attribute>
-	  <attribute name="action">app.np-rm-artist</attribute>
-        </item>
-      </section>
-    </submenu>
-    <submenu>
-      <attribute name="label" translatable="yes">Remove Other</attribute>
-      <section>
-        <item>
-      	  <attribute name="label" translatable="yes">Songs</attribute>
-	  <attribute name="action">app.np-rm-other-song</attribute>
-        </item>
-        <item>
-      	  <attribute name="label" translatable="yes">Albums</attribute>
-	  <attribute name="action">app.np-rm-other-album</attribute>
-        </item>
-        <item>
-      	  <attribute name="label" translatable="yes">Artists</attribute>
-	  <attribute name="action">app.np-rm-other-artist</attribute>
-        </item>
-      </section>
-    </submenu>
-    <section>
-      <item>
-        <attribute name="label" translatable="yes">Scroll to Playing</attribute>
-        <attribute name="action">app.np-scroll</attribute>
-      </item>
-    </section>
-    <section>
-      <attribute name="rb-plugin-menu-link">source-popup</attribute>
-    </section>
-    <section>
-      <item>
-	<attribute name="label" translatable="yes">Pr_operties</attribute>
-	<attribute name="action">app.clipboard-properties</attribute>
-      </item>
-    </section>
-  </menu>
-  <!---------------------------------------------------------->
-  <!--                       SIDEBAR                        -->
-  <!---------------------------------------------------------->
-  <menu id="np-sidebar-popup">
-    <section>
-      <item>
-        <attribute name="label" translatable="yes">Clear</attribute>
-	<attribute name="action">app.np-clear</attribute>
-      </item>
-    </section>
-    <submenu>
-      <attribute name="label" translatable="yes">Remove</attribute>
-      <section>
-        <item>
-      	  <attribute name="label" translatable="yes">Song</attribute>
-	  <attribute name="action">app.np-bar-rm-song</attribute>
-        </item>
-        <item>
-      	  <attribute name="label" translatable="yes">Album</attribute>
-	  <attribute name="action">app.np-bar-rm-album</attribute>
-        </item>
-        <item>
-      	  <attribute name="label" translatable="yes">Artist</attribute>
-	  <attribute name="action">app.np-bar-rm-artist</attribute>
-        </item>
-      </section>
-    </submenu>
-    <submenu>
-      <attribute name="label" translatable="yes">Remove Other</attribute>
-      <section>
-        <item>
-      	  <attribute name="label" translatable="yes">Songs</attribute>
-	  <attribute name="action">app.np-bar-rm-other-song</attribute>
-        </item>
-        <item>
-      	  <attribute name="label" translatable="yes">Albums</attribute>
-	  <attribute name="action">app.np-bar-rm-other-album</attribute>
-        </item>
-        <item>
-      	  <attribute name="label" translatable="yes">Artists</attribute>
-	  <attribute name="action">app.np-bar-rm-other-artist</attribute>
-        </item>
-      </section>
-    </submenu>
-    <section>
-      <item>
-        <attribute name="label" translatable="yes">Scroll to Playing</attribute>
-        <attribute name="action">app.np-bar-scroll</attribute>
-      </item>
-    </section>
-    <section>
-      <attribute name="rb-plugin-menu-link">sidebar-popup</attribute>
-    </section>
-    <section>
-      <item>
-	<attribute name="label" translatable="yes">Pr_operties</attribute>
-	<attribute name="action">app.sidebar-properties</attribute>
-      </item>
-    </section>
-  </menu>
-</interface>
-"""
+from gi.repository import GObject
+from gi.repository import Peas
+from gi.repository import Gtk
+from gi.repository import Gio
 
 class NowPlayingSource(RB.StaticPlaylistSource):
-        def __init__(self):
-                super(NowPlayingSource,self).__init__()
+        def __init__(self, **kwargs):
+                super(NowPlayingSource,self).__init__(kwargs)
                 self.__activated = False
                 self.__playing_source = None
                 self.__playing_source_signals = []
@@ -199,19 +95,20 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 app.add_plugin_menu_item('browser-popup', 'add-to-np-link', menu)
 
                 # Create the context menus from XML
-                builder = Gtk.Builder.new_from_string(ui_context_menus,
-                        len(ui_context_menus))
+                builder = Gtk.Builder()
+                builder.add_from_file(rb.find_plugin_file(self.plugin, "ui/rbnp_context_menu.ui"))
                 self.__source_menu = builder.get_object("np-source-popup")
                 self.__sidebar_menu = builder.get_object("np-sidebar-popup")
 
-                
+
         # Activate source. Connects to signals, creates the menu actions
         # and draws the sidebar.
-        def do_activate(self):
+        def setup(self):
                 if self.__activated:
                         return
 
                 print("ACTIVATING SOURCE!")
+                self.plugin = self.props.plugin
                 self.__activated = True
                 self.__entry_view = self.get_entry_view()
                 self.__playing_source = None
@@ -237,7 +134,7 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 if playing_source:
                         shell_player.stop()
                         shell_player.set_playing_source(playing_source)
-                                
+
 
         # Deactivates the source.
         def do_delete_thyself(self):
@@ -261,7 +158,7 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 playing_entry = player.get_playing_entry()
 
                 # Remove sidebar
-                shell.remove_widget (self.__sidebar, 
+                shell.remove_widget (self.__sidebar,
                         RB.ShellUILocation.RIGHT_SIDEBAR)
                 # Remove display page
                 shell.get_property("display-page-model").remove_page(self)
@@ -317,8 +214,8 @@ class NowPlayingSource(RB.StaticPlaylistSource):
         def draw_sidebar(self):
                 shell = self.get_property("shell")
                 sidebar = self.__sidebar = RB.EntryView.new(
-                        shell.get_property("db"), 
-                        shell.get_property("shell-player"), 
+                        shell.get_property("db"),
+                        shell.get_property("shell-player"),
                         True, True)
 
                 sidebar.set_property("vscrollbar-policy", Gtk.PolicyType.AUTOMATIC)
@@ -333,9 +230,9 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 sidebar_column.set_clickable(False)
 
                 sidebar_column.set_cell_data_func(renderer, self.cell_data_func)
-        
+
                 sidebar.append_column_custom(
-                        sidebar_column, _("Now Playing"), 
+                        sidebar_column, _("Now Playing"),
                         "Title", operator.gt, None)
                 sidebar.set_columns_clickable(False)
                 super(NowPlayingSource,self).setup_entry_view(sidebar)
@@ -347,7 +244,7 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 sidebar.show_all()
 
 	        # Connect to the "entry-activated" signal of the sidebar
-                sidebar.connect("entry-activated", 
+                sidebar.connect("entry-activated",
                         self.sidebar_entry_activated_callback)
 
         # Cell data func used by the sidebar to format the output of the entries.
@@ -363,7 +260,7 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                         "<i>" + GObject.markup_escape_text(artist) + "</i></span>"
                 renderer.set_property("markup", markup)
 
-        # Updates the titles of the sidebar and the source page to show the 
+        # Updates the titles of the sidebar and the source page to show the
         # number of songs in the Now Playing playlist (if any).
         def update_titles(self):
                 model = self.__sidebar.get_property("model")
@@ -393,17 +290,17 @@ class NowPlayingSource(RB.StaticPlaylistSource):
         # ('sel_matching' = False)
         def gather_entries_by_prop(self, model, sel_props, prop, sel_matching):
                 entries = []
-                model.foreach(self.select_entry_by_prop, prop, 
+                model.foreach(self.select_entry_by_prop, prop,
                         sel_props, entries, sel_matching)
                 return entries
 
         # Used by 'gather_entries_by_prop' (called by the foreach
-        # function of the query model). Iteratively contructs a list with the 
+        # function of the query model). Iteratively contructs a list with the
         # entries that match/don't match a given property. If 'select_matching'
         # is True, the entry (given by 'iter') is selected if the value of its
         # 'prop' property is in 'prop_set'. If 'select_matching' is False, the
         # entry is selected is 'prop' is not in 'prop_set'.
-        def select_entry_by_prop(self, model, path, iter, prop, prop_set, 
+        def select_entry_by_prop(self, model, path, iter, prop, prop_set,
                         selected_entries, select_matching):
                 def xor(A, B):
                         return A != B
@@ -422,7 +319,7 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 self.set_query_model(new_model)
                 self.__sidebar.set_model(new_model)
                 self.update_titles()
- 
+
         #####################################################################
         #                       CALLBACKS                                   #
         #####################################################################
@@ -463,7 +360,7 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                         return
 
                 if empty_model and not source_is_new:# Restore playing source data
-                        self.__playing_source.set_property("query-model", 
+                        self.__playing_source.set_property("query-model",
                                 self.__playing_source_model)
 
                 # If new source is different
@@ -497,24 +394,24 @@ class NowPlayingSource(RB.StaticPlaylistSource):
         def connect_signals_for_control(self, new_source):
                 signals = self.__playing_source_signals = []
                 playing_source_view = new_source.get_entry_view()
-                id = new_source.connect("filter-changed", 
+                id = new_source.connect("filter-changed",
                         self.filter_changed_callback)
                 signals.append((id, new_source))
                 id = playing_source_view.connect("entry-activated",
                         self.entry_activated)
                 signals.append((id, playing_source_view))
                 for prop_view in new_source.get_property_views():
-                      id = prop_view.connect("property_activated", 
+                      id = prop_view.connect("property_activated",
                             self.property_activated)
                       signals.append((id, prop_view))
                 # FIXME: The next signals should only be connected for non
                 # browser sources.
                 # FIXME: For Playlist sources use the "base-query-model"
                 new_source_model = new_source.get_property("query-model")
-                id = new_source_model.connect("row_inserted", 
+                id = new_source_model.connect("row_inserted",
                         self.row_inserted_callback)
                 signals.append((id, new_source_model))
-                id = new_source_model.connect("row-deleted", 
+                id = new_source_model.connect("row-deleted",
                         self.row_deleted_callback)
                 signals.append((id, new_source_model))
 
@@ -558,7 +455,7 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 player.play_entry(entry, source)
                 source.set_property("query-model", query_model)
                 self.update_titles()
-        
+
         def entry_activated(self, view, entry):
                 print("ENTRY ACTIVATED")
                  # Clear current selection
@@ -577,7 +474,7 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 player = self.get_property("shell").get_property("shell-player")
                 player.play_entry(selected_entry, self.__playing_source)
 
-        
+
         # Updates the playing status symbol (play/pause) next to the playing
         # entry in the NowPlaying source page and sidebar.
         def playing_changed_callback(self, player, playing):
@@ -596,7 +493,7 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 sidebar.set_state(state)
                 self.__playing_source.get_entry_view().set_state(state)
 
-                # Scroll to playing entry. 
+                # Scroll to playing entry.
                 # FIXME: Scroll only if it isn't visible.
                 # FIXME: Stop auto scrolling after adding 'Scroll to playing'
                 playing_entry = player.get_playing_entry()
@@ -608,7 +505,7 @@ class NowPlayingSource(RB.StaticPlaylistSource):
 
         # Callback to the clear action of the context menus.
         def clear_callback(self, action, data):
-                self.clear()                
+                self.clear()
                 player = self.get_property("shell").get_property("shell-player")
                 player.stop()
 
@@ -634,7 +531,7 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 self.update_titles()
 
 
-        # Callback for the 'Remove' and 'Remove Other' actions of the context 
+        # Callback for the 'Remove' and 'Remove Other' actions of the context
         # menus of both the sidebar and the source page. Removes from 'view' all
         # the entries that have ('Remove') or do not have ('Remove Other') the
         # same values for property 'prop' as the selected entries, depending on
@@ -685,13 +582,16 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 playing_entry = player.get_playing_entry()
                 if playing_entry:
                         view.scroll_to_entry(playing_entry)
-        
+
 ###################################################
 #                 PLUGIN INIT CODE                #
 ###################################################
 class NowPlaying(GObject.Object, Peas.Activatable):
         __gtype_name__ = 'NowPlayingPlugin'
         object = GObject.property(type=GObject.Object)
+
+        def __init__(self):
+		        GObject.Object.__init__(self)
 
         def do_activate(self):
                 shell = self.object
@@ -707,15 +607,16 @@ class NowPlaying(GObject.Object, Peas.Activatable):
                         name=_("Now Playing")
                 )
 
+                self.__source.setup()
+
                 # insert Now Playing source into Shared group
                 shell.append_display_page(
                         self.__source,
                         RB.DisplayPageGroup.get_by_id("library"))
-        
-                self.__source.do_activate()                
 
         def do_deactivate(self):
                 # destroy source
                 self.__source.do_delete_thyself()
                 del self.__source
 
+GObject.type_register(NowPlayingSource)
