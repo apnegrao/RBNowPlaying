@@ -414,24 +414,18 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                       id = prop_view.connect("property_activated",
                             self.property_activated)
                       signals.append((id, prop_view))
-                # FIXME: The next signals should only be connected for non
-                # browser sources.
-                # FIXME: For Playlist sources use the "base-query-model"
-                new_source_model = new_source.get_property("query-model")
-                id = new_source_model.connect("row_inserted",
-                        self.row_inserted_callback)
-                signals.append((id, new_source_model))
-                id = new_source_model.connect("row-deleted",
-                        self.row_deleted_callback)
-                signals.append((id, new_source_model))
+                if not self.__source_is_lib:
+                        # FIXME: For Playlist sources use the "base-query-model"
+                        new_source_model = new_source.get_property("query-model")
+                        id = new_source_model.connect("row_inserted",
+                                self.row_inserted_callback)
+                        signals.append((id, new_source_model))
+                        id = new_source_model.connect("row-deleted",
+                                self.row_deleted_callback)
+                        signals.append((id, new_source_model))
 
         def row_inserted_callback(self, model, path, iter):
                 query_model = self.get_property("query-model")
-                if model == query_model:
-                        # XXX: This is needed to prevent recursive insertion
-                        # when RB's 'query_model' == playing source's model,
-                        # i.e., when the playing source is native.
-                        return
                 print("ROW INSERTED")
                 entry = model.iter_to_entry(iter)
                 index = path.get_indices()[0]
@@ -440,11 +434,6 @@ class NowPlayingSource(RB.StaticPlaylistSource):
 
         def row_deleted_callback(self, model, path):
                 query_model = self.get_property("query-model")
-                if model == query_model:
-                        # XXX: This is needed to prevent recursive deletion
-                        # when RB's 'query_model' == playing source's model,
-                        # i.e., when the playing source is native
-                        return
                 if query_model.iter_n_children() == 0:
                         # XXX: This only happens after a clear, which leaves the
                         # NP query_model empty, but doesn't clear the query_model
