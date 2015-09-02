@@ -153,6 +153,8 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 # Disconnect from signals
                 for signal_id, signal_emitter in self.__signals:
                         signal_emitter.disconnect(signal_id)
+                for signal_id, signal_emitter in self.__playing_source_signals:
+                        signal_emitter.disconnect(signal_id)
 
                 # Get the current playing status to use later
                 shell = self.get_property("shell")
@@ -424,15 +426,25 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 signals.append((id, new_source_model))
 
         def row_inserted_callback(self, model, path, iter):
+                query_model = self.get_property("query-model")
+                if model == query_model:
+                        # XXX: This is needed to prevent recursive insertion
+                        # when RB's 'query_model' == playing source's model,
+                        # i.e., when the playing source is native.
+                        return
                 print("ROW INSERTED")
                 entry = model.iter_to_entry(iter)
                 index = path.get_indices()[0]
-                query_model = self.get_property("query-model")
                 query_model.add_entry(entry, index)
                 #self.update_titles()
 
         def row_deleted_callback(self, model, path):
                 query_model = self.get_property("query-model")
+                if model == query_model:
+                        # XXX: This is needed to prevent recursive deletion
+                        # when RB's 'query_model' == playing source's model,
+                        # i.e., when the playing source is native
+                        return
                 if query_model.iter_n_children() == 0:
                         # XXX: This only happens after a clear, which leaves the
                         # NP query_model empty, but doesn't clear the query_model
@@ -530,17 +542,34 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 selected_entries = view.get_selected_entries()
                 if remove_selected:
                         model = self.get_property("query-model")
+                        if not self.__source_is_lib:
+                                model = self.__playing_source_model
                         for entry in selected_entries:
                                 model.remove_entry(entry)
                 else:
-                        self.clear()
-                        model = self.get_property("query-model")
-                        for entry in selected_entries:
-                                model.add_entry(entry, -1)
-                        self.__playing_source.set_property("query-model", model)
-                        playing_entry = player.get_playing_entry()
-                        if not playing_entry in selected_entries:
-                                player.do_next()
+                        # If the playing source is the lib, we can optimize
+                        # the remove process by clearing the current selection
+                        # instead of removing entry by entry.
+                        if self.__source_is_lib:
+                                self.clear()
+                                model = self.get_property("query-model")
+                                self.__playing_source.set_property("query-model", model)
+                                for entry in selected_entries:
+                                        model.add_entry(entry, -1)
+                                playing_entry = player.get_playing_entry()
+                                if not playing_entry in selected_entries:
+                                        player.do_next()
+                        # If the playing source is a non native source, we cannot
+                        # do the same optimization because we don't know its
+                        # internals.
+                        else:
+                                model = self.get_property("query-model")
+                                if not self.__source_is_lib:
+                                        model = self.__playing_source_model
+                                for treerow in model:
+                                        entry, path = list(treerow)
+                                        if not entry in selected_entries:
+                                                model.remove_entry(entry)
                 self.update_titles()
 
 
@@ -560,7 +589,9 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 entries_to_remove = self.gather_entries_by_prop(
                                 model, selected_props, prop, remove_matching)
                 for entry in entries_to_remove:
-                          model.remove_entry(entry)
+                        if not self.__source_is_lib:
+                                model = self.__playing_source_model
+                        model.remove_entry(entry)
                 self.update_titles()
 
         # Callback for the 'Add to Now Playing' action we added to the context
