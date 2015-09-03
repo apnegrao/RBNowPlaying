@@ -25,6 +25,7 @@ from gi.repository import GObject
 from gi.repository import Peas
 from gi.repository import Gtk
 from gi.repository import Gio
+from gi.repository import Gdk
 
 class NowPlayingSource(RB.StaticPlaylistSource):
         def __init__(self, **kwargs):
@@ -35,6 +36,8 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 self.__signals = None
                 self.__filter = None
                 self.__source_is_lib = False
+                self.__song_count = 0
+                self.__update_in_progress = False
 
         # Creates the actions and lib browser popup entries
         def setup_actions(self):
@@ -430,7 +433,25 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 entry = model.iter_to_entry(iter)
                 index = path.get_indices()[0]
                 query_model.add_entry(entry, index)
-                #self.update_titles()
+                # For better performance, we only update the song count at the
+                # titles of the sidebar and display page after every song has
+                # been inserted. We use an idle callback for that.
+                # XXX: Thread safety.
+                if not self.__update_in_progress:
+                        # FIXME: I should use GLib.PRIORITY_DEFAULT_IDLE.
+                        Gdk.threads_add_idle(200, self.update_titles_callback,
+                                False)
+                        self.__update_in_progress = True
+
+        def update_titles_callback(self, data):
+                model = self.get_property("query-model")
+                count = model.iter_n_children(None)
+                if count != self.__song_count:
+                        self.__song_count = count
+                        return True
+                self.__update_in_progress = False
+                self.update_titles()
+                return False
 
         def row_deleted_callback(self, model, path):
                 query_model = self.get_property("query-model")
@@ -442,7 +463,6 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 print("ROW DELETED")
                 entry = query_model.tree_path_to_entry(path)
                 query_model.remove_entry(entry)
-                #self.update_titles()
 
         def filter_changed_callback(self, source):
                 print("FILTER CHANGED!")
