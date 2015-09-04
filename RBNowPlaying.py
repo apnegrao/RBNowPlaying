@@ -106,6 +106,10 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 self.__source_menu = builder.get_object("np-source-popup")
                 self.__sidebar_menu = builder.get_object("np-sidebar-popup")
 
+        # Ignore double clicking on the display page so that NowPlaying is not
+        # mistakenly selected as the playing souce.
+        def do_activate(self):
+                return
 
         # Activate source. Connects to signals, creates the menu actions
         # and draws the sidebar.
@@ -341,10 +345,6 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                         return
 
                 print("NEW SOURCE PLAYING: " + new_source.get_property("name"))
-
-                if new_source == self:  # XXX: This should no longer be possible
-                        print("IT'S US!!")
-                        return
 
                 # This seems to occur only when returning from Stop. Let's just
                 # resume playing from the Now Playing playlist. XXX: If the user
