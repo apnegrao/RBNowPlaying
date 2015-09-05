@@ -332,13 +332,46 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 self.__sidebar.set_model(new_model)
                 self.update_titles()
 
+        # Connects to the relevant signals when a new source is selected to
+        # play (called by "source_changed_callback"). FIXME - the name is
+        # misleading.
+        def connect_signals_for_control(self, new_source):
+                signals = self.__playing_source_signals = []
+                playing_source_view = new_source.get_entry_view()
+                id = new_source.connect("filter-changed",
+                        self.filter_changed_callback)
+                signals.append((id, new_source))
+                id = playing_source_view.connect("entry-activated",
+                        self.playing_source_entry_activated)
+                signals.append((id, playing_source_view))
+                for prop_view in new_source.get_property_views():
+                        # The shell-player connects and disconnects from this
+                        # signal whenever a new source page is selected. Thus,
+                        # we need "connect_after" to make sure that our handler 
+                        # is not called before the "shell-player"'s handler. 
+                        # Otherwise playback would always start with the second
+                        # song: our handler would start playback and then the
+                        # shell-player handler would immediately change to the
+                        # next song.
+                        id = prop_view.connect_after("property-activated",
+                                self.property_activated_callback)
+                        signals.append((id, prop_view))
+                if not self.__source_is_lib:
+                        # FIXME: For Playlist sources use the "base-query-model"
+                        new_source_model = new_source.get_property("query-model")
+                        id = new_source_model.connect("row_inserted",
+                                self.row_inserted_callback)
+                        signals.append((id, new_source_model))
+                        id = new_source_model.connect("row-deleted",
+                                self.row_deleted_callback)
+                        signals.append((id, new_source_model))
+
         #####################################################################
-        #                       CALLBACKS                                   #
+        #                        SIGNAL CALLBACKS                           #
         #####################################################################
-        #############################SIGNALS#################################
-        # When a source is selected to play, we intercept that call and replace
-        # the selected source with the NowPlayingSource.
-        # XXX: Replacing is not the most efficient/elegant solution...
+        # When a new source is selected to play, we intercept that call in 
+        # order to set Now Playing's internal data. This includes connecting
+        # to signals and updating the query model and the sidebar.
         def source_changed_callback(self, player, new_source):
                 if new_source == None:
                         print("NO SOURCE SELECTED")
@@ -419,40 +452,12 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                                 self.connect_signals_for_control(new_source)
                 self.update_titles()
 
-        def connect_signals_for_control(self, new_source):
-                signals = self.__playing_source_signals = []
-                playing_source_view = new_source.get_entry_view()
-                id = new_source.connect("filter-changed",
-                        self.filter_changed_callback)
-                signals.append((id, new_source))
-                id = playing_source_view.connect("entry-activated",
-                        self.entry_activated)
-                signals.append((id, playing_source_view))
-                for prop_view in new_source.get_property_views():
-                        # The shell-player connects and disconnects from this
-                        # signal whenever a new source page is selected. Thus,
-                        # we need "connect_after" to make sure that our handler 
-                        # is not called before the "shell-player"'s handler. 
-                        # Otherwise playback would always start with the second
-                        # song: our handler would start playback and then the
-                        # shell-player handler would immediately change to the
-                        # next song.
-                        id = prop_view.connect_after("property-activated",
-                                self.property_activated)
-                        signals.append((id, prop_view))
-                if not self.__source_is_lib:
-                        # FIXME: For Playlist sources use the "base-query-model"
-                        new_source_model = new_source.get_property("query-model")
-                        id = new_source_model.connect("row_inserted",
-                                self.row_inserted_callback)
-                        signals.append((id, new_source_model))
-                        id = new_source_model.connect("row-deleted",
-                                self.row_deleted_callback)
-                        signals.append((id, new_source_model))
-
+        # Callback to the "row-inserted" signal of the playing source's query
+        # model. Simply adds the entry to NP's own query-model and sets the
+        # update_titles_callback if needed.
         def row_inserted_callback(self, model, path, iter):
-                query_model = self.get_property("query-model")
                 print("ROW INSERTED")
+                query_model = self.get_property("query-model")
                 entry = model.iter_to_entry(iter)
                 index = path.get_indices()[0]
                 query_model.add_entry(entry, index)
@@ -466,16 +471,8 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                                 False)
                         self.__update_in_progress = True
 
-        def update_titles_callback(self, data):
-                model = self.get_property("query-model")
-                count = model.iter_n_children(None)
-                if count != self.__song_count:
-                        self.__song_count = count
-                        return True
-                self.__update_in_progress = False
-                self.update_titles()
-                return False
-
+        # Callback to the "row-inserted" signal of the playing source's query
+        # model. Just removes the corresponding entry from NP's query model.
         def row_deleted_callback(self, model, path):
                 query_model = self.get_property("query-model")
                 if query_model.iter_n_children() == 0:
@@ -486,7 +483,28 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 print("ROW DELETED")
                 entry = query_model.tree_path_to_entry(path)
                 query_model.remove_entry(entry)
+                # TODO: Set the update_titles_callback here also.
 
+        # Background thread function executed when a new item is added to or
+        # deleted from the the query model of the playing source. The goal
+        # of this job is to update the titles of the sidebar and the display
+        # page only once, regardless of the number of entries that are added/
+        # deleted (at once).
+        def update_titles_callback(self, data):
+                model = self.get_property("query-model")
+                count = model.iter_n_children(None)
+                if count != self.__song_count:
+                        self.__song_count = count
+                        return True
+                self.__update_in_progress = False
+                self.update_titles()
+                return False
+
+        # Callback to the "filter-changed" signal of the playing source. Only
+        # applicable for browser sources. Because we want to prevent rhythmbox
+        # from changing the play order when the user browses the source's songs,
+        # when the filter changes, we simply revert the playing source's query
+        # back to what's in the sidebar.
         def filter_changed_callback(self, source):
                 print("FILTER CHANGED!")
                 if self.__playing_source == None:
@@ -495,7 +513,10 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 model = self.get_property("query-model")
                 source.set_property("query-model", model)
 
-        def property_activated(self, prop_view, prop_name):
+        # Callback to the "property-activated" signal of the playing source.
+        # When a property is activated (by double clicking on some item in the
+        # browser), we update NP's own query model.
+        def property_activated_callback(self, prop_view, prop_name):
                 print("PROPERTY ACTIVATED")
                 source = self.__playing_source
                 new_model = source.get_entry_view().get_property("model")
@@ -513,7 +534,10 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 source.set_property("query-model", query_model)
                 self.update_titles()
 
-        def entry_activated(self, view, entry):
+        # Callback to the "entry-activated" signal of the playing source's entry
+        # view. Updates NP's query model to match the current model of the 
+        # playing source.
+        def playing_source_entry_activated(self, view, entry):
                 print("ENTRY ACTIVATED")
                  # Clear current selection
                 self.clear()
