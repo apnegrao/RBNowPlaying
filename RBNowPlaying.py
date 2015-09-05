@@ -109,7 +109,7 @@ class NowPlayingSource(RB.StaticPlaylistSource):
         # Ignore double clicking on the display page so that NowPlaying is not
         # mistakenly selected as the playing souce.
         def do_activate(self):
-                return
+                pass
 
         # Activate source. Connects to signals, creates the menu actions
         # and draws the sidebar.
@@ -346,6 +346,13 @@ class NowPlayingSource(RB.StaticPlaylistSource):
 
                 print("NEW SOURCE PLAYING: " + new_source.get_property("name"))
 
+                # This happens either when the user double clicks on an entry
+                # in the display page entry view. FIXME: Ideally, we shouldn't
+                # even allow this to happen, but, for now, let's redirect to
+                # the appropriate source
+                if new_source == self:
+                        pass
+
                 # This seems to occur only when returning from Stop. Let's just
                 # resume playing from the Now Playing playlist. XXX: If the user
                 # wants to select something else, he needs to double click on it.
@@ -414,9 +421,17 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                         self.entry_activated)
                 signals.append((id, playing_source_view))
                 for prop_view in new_source.get_property_views():
-                      id = prop_view.connect("property_activated",
-                            self.property_activated)
-                      signals.append((id, prop_view))
+                        # The shell-player connects and disconnects from this
+                        # signal whenever a new source page is selected. Thus,
+                        # we need "connect_after" to make sure that our handler 
+                        # is not called before the "shell-player"'s handler. 
+                        # Otherwise playback would always start with the second
+                        # song: our handler would start playback and then the
+                        # shell-player handler would immediately change to the
+                        # next song.
+                        id = prop_view.connect_after("property-activated",
+                                self.property_activated)
+                        signals.append((id, prop_view))
                 if not self.__source_is_lib:
                         # FIXME: For Playlist sources use the "base-query-model"
                         new_source_model = new_source.get_property("query-model")
