@@ -346,12 +346,20 @@ class NowPlayingSource(RB.StaticPlaylistSource):
 
                 print("NEW SOURCE PLAYING: " + new_source.get_property("name"))
 
-                # This happens either when the user double clicks on an entry
+                # This happens when the user double clicks on an entry
                 # in the display page entry view. FIXME: Ideally, we shouldn't
                 # even allow this to happen, but, for now, let's redirect to
                 # the appropriate source
                 if new_source == self:
-                        pass
+                        entries = self.__entry_view.get_selected_entries()
+                        entry = None
+                        if entries:
+                                entry = entries[0]
+                        if entry and self.__playing_source:
+                                player.play_entry(entry, self.__playing_source)
+                        else:
+                                pass # This should not be possible.
+                        return
 
                 # This seems to occur only when returning from Stop. Let's just
                 # resume playing from the Now Playing playlist. XXX: If the user
