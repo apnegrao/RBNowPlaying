@@ -133,11 +133,6 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                                         "playing-source-changed",
                                         self.source_changed_callback),
                                 shell_player))
-                # ... and "playing-changed". XXX: I prob. should connect to
-                # this signal only after activating the source
-                signals.append((shell_player.connect("playing-changed",
-                                        self.playing_changed_callback),
-                                shell_player))
 
                 # Activating Now Playing. FIXME: This should be smoother
                 playing_source = shell_player.get_playing_source()
@@ -344,6 +339,10 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 id = playing_source_view.connect("entry-activated",
                         self.playing_source_entry_activated)
                 signals.append((id, playing_source_view))
+                player = self.get_property("shell").get_property("shell-player")
+                id = player.connect("playing-changed",
+                                        self.playing_changed_callback)
+                signals.append((id, player))
                 for prop_view in new_source.get_property_views():
                         # The shell-player connects and disconnects from this
                         # signal whenever a new source page is selected. Thus,
@@ -394,9 +393,10 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                                 pass # This should not be possible.
                         return
 
-                # This seems to occur only when returning from Stop. Let's just
-                # resume playing from the Now Playing playlist. XXX: If the user
-                # wants to select something else, he needs to double click on it.
+                # When restarting playback after a stop by clicking the play
+                # button, playback resumes from the NP playlist, ignoring the
+                # playing source's current selection. If the user wants to
+                # select something else, he needs to double click on it.
                 model = self.get_property("query_model")
                 empty_model = model.get_iter_first() is None
                 source_is_new = self.__playing_source != new_source
@@ -404,9 +404,6 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                         print("SAME SOURCE, IGNORING SELECTION")
                         # FIXME: I'm complicating things: just start
                         # playing from the top of the playlist.
-                        ret, playing = player.get_playing()
-                        if not playing:
-                                return
                         bar_entries = self.__sidebar.get_selected_entries()
                         page_entries = self.__entry_view.get_selected_entries()
                         entry_to_play = None
@@ -483,7 +480,11 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 print("ROW DELETED")
                 entry = query_model.tree_path_to_entry(path)
                 query_model.remove_entry(entry)
-                # TODO: Set the update_titles_callback here also.
+                if not self.__update_in_progress:
+                        # FIXME: I should use GLib.PRIORITY_DEFAULT_IDLE.
+                        Gdk.threads_add_idle(200, self.update_titles_callback,
+                                False)
+                        self.__update_in_progress = True
 
         # Background thread function executed when a new item is added to or
         # deleted from the the query model of the playing source. The goal
