@@ -38,6 +38,7 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 self.__source_is_lib = False
                 self.__song_count = 0
                 self.__update_in_progress = False
+                self.__queue_signal_id = None
 
         # Creates the actions and lib browser popup entries
         def setup_actions(self):
@@ -128,18 +129,41 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 signals = self.__signals = []
                 # Connect to ShellPlayer's "playing-source-changed"...
                 shell = self.get_property("shell")
-                shell_player = shell.get_property("shell-player")
-                signals.append((shell_player.connect(
+                player = shell.get_property("shell-player")
+                signals.append((player.connect(
                                         "playing-source-changed",
                                         self.source_changed_callback),
-                                shell_player))
+                                player))
 
-                # Activating Now Playing. FIXME: This should be smoother
-                playing_source = shell_player.get_playing_source()
-                if playing_source:
-                        shell_player.stop()
-                        shell_player.set_playing_source(playing_source)
+                # Activating Now Playing.
+                playing_source = player.get_playing_source()
+                # FIXME: Do not call the callback directly, move the common
+                # code to a new method and call it in both places.
+                self.source_changed_callback(player, playing_source)
+                model = self.get_property("query-model")
+                playing_entry = player.get_playing_entry()
+                if playing_entry and not playing_entry in model:
+                        bar_model = self.__sidebar.get_property("model")
+                        view_model = self.__entry_view.get_property("model")
+                        bar_model.add_entry(playing_entry, 0)
+                        view_model.add_entry(playing_entry, 0)
+                        self.__queue_signal_id = player.connect(
+                                        "playing-song-changed",
+                                        self.song_changed_callback,
+                                        False)
+                        self.update_titles()
 
+
+        def song_changed_callback(self, player, entry, playing_from_queue):
+                if playing_from_queue:
+                        pass
+                else:
+                        model = self.__sidebar.get_property("model")
+                        entry = model.iter_to_entry(model.get_iter_first())
+                        model.remove_entry(entry)
+                        model = self.__entry_view.get_property("model")
+                        model.remove_entry(entry)
+                        player.disconnect(self.__queue_signal_id)
 
         # Deactivates the source.
         def do_delete_thyself(self):
@@ -151,6 +175,7 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 app = Gio.Application.get_default()
                 app.remove_action('add-to-now-playing')
                 app.remove_plugin_menu_item('browser-popup', 'add-to-np')
+                # TODO: Remove the remaining actions.
 
                 # Disconnect from signals
                 for signal_id, signal_emitter in self.__signals:
@@ -169,9 +194,11 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                         RB.ShellUILocation.RIGHT_SIDEBAR)
                 # Remove display page
                 shell.get_property("display-page-model").remove_page(self)
-                # Stop playback. FIXME: Make this transition smoother.
-                if playing:
-                        player.stop()
+                # Restore playing source's query_model
+                if self.__playing_source and self.__playing_source_model:
+                        self.__playing_source.set_property(
+                                        "query-model",
+                                         self.__playing_source_model)
 
         # Prevent the source page from being renamed.
         def do_can_rename(self):
