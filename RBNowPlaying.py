@@ -112,8 +112,8 @@ class NowPlayingSource(RB.StaticPlaylistSource):
         def do_activate(self):
                 pass
 
-        # Activate source. Connects to signals, creates the menu actions
-        # and draws the sidebar.
+        # Activate source. Connects to signals, creates the menu actions,
+        # draws the sidebar and populates the query model and views.
         def setup(self):
                 if self.__activated:
                         return
@@ -142,28 +142,21 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 self.source_changed_callback(player, playing_source)
                 model = self.get_property("query-model")
                 playing_entry = player.get_playing_entry()
-                if playing_entry and not playing_entry in model:
-                        bar_model = self.__sidebar.get_property("model")
-                        view_model = self.__entry_view.get_property("model")
-                        bar_model.add_entry(playing_entry, 0)
-                        view_model.add_entry(playing_entry, 0)
-                        self.__queue_signal_id = player.connect(
-                                        "playing-song-changed",
-                                        self.song_changed_callback,
-                                        False)
+                # If the current playing entry is not in the playing source's
+                # query model, we add temporarily to NP's query model so that
+                # it appears in the sidebar and display page while the track
+                # is playing. The track is removed from both views when it
+                # stops playing (in the "song_changed_callback").
+                iter = Gtk.TreeIter()
+                if playing_entry and not model.entry_to_iter(playing_entry, iter):
+                        model.add_entry(playing_entry, 0)
+                        signals.append((player.connect(
+                                                "playing-song-changed",
+                                                self.song_changed_callback,
+                                                False),
+                                        player))
                         self.update_titles()
 
-
-        def song_changed_callback(self, player, entry, playing_from_queue):
-                if playing_from_queue:
-                        pass
-                else:
-                        model = self.__sidebar.get_property("model")
-                        entry = model.iter_to_entry(model.get_iter_first())
-                        model.remove_entry(entry)
-                        model = self.__entry_view.get_property("model")
-                        model.remove_entry(entry)
-                        player.disconnect(self.__queue_signal_id)
 
         # Deactivates the source.
         def do_delete_thyself(self):
@@ -183,12 +176,7 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 for signal_id, signal_emitter in self.__playing_source_signals:
                         signal_emitter.disconnect(signal_id)
 
-                # Get the current playing status to use later
                 shell = self.get_property("shell")
-                player = shell.get_property("shell-player")
-                ret, playing = player.get_playing()
-                playing_entry = player.get_playing_entry()
-
                 # Remove sidebar
                 shell.remove_widget (self.__sidebar,
                         RB.ShellUILocation.RIGHT_SIDEBAR)
@@ -610,6 +598,22 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                         entry_view.scroll_to_entry(playing_entry)
                         sidebar.scroll_to_entry(playing_entry)
 
+        # Callback to the "playing-song-changed" signal of the shell player.
+        # NP connects to this signal when the plugin is enabled while something
+        # is already playing AND the playing entry is not in the current query
+        # model of the playing source. This callback removes that entry from
+        # NP's query model.
+        def song_changed_callback(self, player, entry, playing_from_queue):
+                if playing_from_queue:
+                        pass
+                else:
+                        model = self.get_property("query-model")
+                        entry = model.iter_to_entry(model.get_iter_first())
+                        model.remove_entry(entry)
+                        id, emiter = self.__signals[1]
+                        player.disconnect(id)
+                        del self.__signals[1]
+
         #################################ACTIONS#############################
 
         # Callback to the clear action of the context menus.
@@ -663,8 +667,7 @@ class NowPlayingSource(RB.StaticPlaylistSource):
         # same values for property 'prop' as the selected entries, depending on
         # the value of 'remove_matching' (True = 'Remove', False = 'Remove Other').
         # TODO: Maybe I can optimize the 'Remove Other' process by first clearing
-        # the current model and then adding the entries to keep. Not doing it right
-        # now because foreach does not iterate in song order.
+        # the current model and then adding the entries to keep.
         def menu_remove_by_prop_callback(self, action, data, prop, view,
                         remove_matching):
                 model = self.get_property("query-model")
