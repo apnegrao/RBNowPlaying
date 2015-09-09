@@ -33,7 +33,7 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 self.__activated = False
                 self.__playing_source = None
                 self.__playing_source_signals = []
-                self.__signals = None
+                self.__signals = []
                 self.__filter = None
                 self.__source_is_lib = False
                 self.__song_count = 0
@@ -101,8 +101,11 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 # Create the context menus from XML
                 builder = Gtk.Builder()
                 filename = rb.find_plugin_file(self.plugin, "ui/rbnp_context_menu.ui")
+                engine = Peas.Engine.get_default()
+                info = engine.get_plugin_info("RBNowPlaying")
+                dir = info.get_module_dir()
                 if not filename:
-                        filename = "./ui/rbnp_context_menu.ui"
+                        filename = dir + "/ui/rbnp_context_menu.ui"
                 builder.add_from_file(filename)
                 self.__source_menu = builder.get_object("np-source-popup")
                 self.__sidebar_menu = builder.get_object("np-sidebar-popup")
@@ -126,7 +129,7 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 self.draw_sidebar()
                 self.setup_actions()
 
-                signals = self.__signals = []
+                signals = self.__signals
                 # Connect to ShellPlayer's "playing-source-changed"...
                 shell = self.get_property("shell")
                 player = shell.get_property("shell-player")
