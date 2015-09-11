@@ -383,6 +383,26 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                                 self.row_deleted_callback)
                         signals.append((id, new_source_model))
 
+        # Called by "playing_changed_callback" to replace the currently playing
+        # entry with one from NP's query model when returning from stop without
+        # changing the playing source.
+        def replace_selection(self, player):
+                # FIXME: I'm complicating things: just start
+                # playing from the top of the playlist.
+                bar_entries = self.__sidebar.get_selected_entries()
+                page_entries = self.__entry_view.get_selected_entries()
+                entry_to_play = None
+                if bar_entries:
+                        entry_to_play = bar_entries[0]
+                elif page_entries:
+                        entry_to_play = page_entries[0]
+                else:
+                        model = self.get_property("query-model")
+                        iter = model.get_iter_first()
+                        entry_to_play = model.iter_to_entry(iter)
+                player.play_entry(entry_to_play, self.__playing_source)
+
+
         #####################################################################
         #                        SIGNAL CALLBACKS                           #
         #####################################################################
@@ -390,6 +410,7 @@ class NowPlayingSource(RB.StaticPlaylistSource):
         # order to set Now Playing's internal data. This includes connecting
         # to signals and updating the query model and the sidebar.
         def source_changed_callback(self, player, new_source):
+                self.__ignore_selection = False
                 if new_source == None:
                         print("NO SOURCE SELECTED")
                         return
@@ -414,25 +435,24 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 # When restarting playback after a stop by clicking the play
                 # button, playback resumes from the NP playlist, ignoring the
                 # playing source's current selection. If the user wants to
-                # select something else, he needs to double click on it.
+                # select something else, he needs to double click on it. This
+                # only happens if 'new_source' is the same that was playing
+                # before plyback stopped.
                 model = self.get_property("query_model")
                 empty_model = model.get_iter_first() is None
                 source_is_new = self.__playing_source != new_source
                 if not source_is_new and not empty_model:
+                        # Note - we may not actually be ignoring the selection:
+                        # if NP receives a "property/entry-activated" signal
+                        # immediately after "playing-source-changed", the 
+                        # selection will not be ignored.
                         print("SAME SOURCE, IGNORING SELECTION")
-                        # FIXME: I'm complicating things: just start
-                        # playing from the top of the playlist.
-                        bar_entries = self.__sidebar.get_selected_entries()
-                        page_entries = self.__entry_view.get_selected_entries()
-                        entry_to_play = None
-                        if bar_entries:
-                                entry_to_play = bar_entries[0]
-                        elif page_entries:
-                                entry_to_play = page_entries[0]
-                        else:
-                                iter = model.get_iter_first()
-                                entry_to_play = model.iter_to_entry(iter)
-                        player.play_entry(entry_to_play, self.__playing_source)
+                        # Instead of calling "replace_selection" here, we call
+                        # it the next time playback changes, because we don't
+                        # want to force start playback when not supposed to
+                        # (the method has a 'player.play()' statement).
+                        # FIXME: Replace only if models are different.
+                        self.__ignore_selection = True
                         return
 
                 if empty_model and not source_is_new:# Restore playing source data
@@ -542,6 +562,7 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 iter = new_model.get_iter_first()
                 if not iter:   # The query-model of the source has not yet been
                         return  # updated.
+                self.__ignore_selection = False
                 # Clear current selection
                 self.clear()
                 # Add new entries
@@ -558,6 +579,7 @@ class NowPlayingSource(RB.StaticPlaylistSource):
         # playing source.
         def playing_source_entry_activated(self, view, entry):
                 print("ENTRY ACTIVATED")
+                self.__ignore_selection = False
                  # Clear current selection
                 self.clear()
                 # Add new entries
@@ -574,12 +596,15 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 player = self.get_property("shell").get_property("shell-player")
                 player.play_entry(selected_entry, self.__playing_source)
 
-
         # Updates the playing status symbol (play/pause) next to the playing
         # entry in the NowPlaying source page and sidebar.
         def playing_changed_callback(self, player, playing):
                 print("PLAY STATE CHANGED!")
                 if not self.__playing_source:
+                        return
+                if self.__ignore_selection:
+                        self.__ignore_selection = False
+                        self.replace_selection(player)
                         return
                 entry_view = self.__entry_view
                 sidebar = self.__sidebar
@@ -654,9 +679,7 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                         # do the same optimization because we don't know its
                         # internals.
                         else:
-                                model = self.get_property("query-model")
-                                if not self.__source_is_lib:
-                                        model = self.__playing_source_model
+                                model = self.__playing_source_model
                                 for treerow in model:
                                         entry, path = list(treerow)
                                         if not entry in selected_entries:
