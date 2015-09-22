@@ -441,7 +441,8 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 model = self.get_property("query_model")
                 empty_model = model.get_iter_first() is None
                 source_is_new = self.__playing_source != new_source
-                if not source_is_new and not empty_model:
+                ret, playing = player.get_playing()
+                if not source_is_new and not empty_model and not playing:
                         # Note - we may not actually be ignoring the selection:
                         # if NP receives a "property/entry-activated" signal
                         # immediately after "playing-source-changed", the 
