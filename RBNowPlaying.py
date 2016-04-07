@@ -569,10 +569,14 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 # Add new entries
                 query_model = self.get_property("query-model")
                 query_model.copy_contents(new_model)
-                player = self.get_property("shell").get_property("shell-player")
-                entry = query_model.iter_to_entry(query_model.get_iter_first())
-                player.play_entry(entry, source)
                 source.set_property("query-model", query_model)
+                player = self.get_property("shell").get_property("shell-player")
+                ret, shuffle, repeat = player.get_playback_state()
+                if shuffle:
+                        player.do_next()
+                else:
+                        entry = query_model.iter_to_entry(query_model.get_iter_first())
+                        player.play_entry(entry, source)
                 self.update_titles()
 
         # Callback to the "entry-activated" signal of the playing source's entry
