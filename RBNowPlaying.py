@@ -126,6 +126,7 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 self.__activated = True
                 self.__entry_view = self.get_entry_view()
                 self.__playing_source = None
+                self.__ignore_selection = False
                 self.draw_sidebar()
                 self.setup_actions()
 
@@ -140,24 +141,27 @@ class NowPlayingSource(RB.StaticPlaylistSource):
 
                 # Activating Now Playing.
                 playing_source = player.get_playing_source()
-                # FIXME: Do not call the callback directly, move the common
-                # code to a new method and call it in both places.
-                self.source_changed_callback(player, playing_source)
-                model = self.get_property("query-model")
-                playing_entry = player.get_playing_entry()
-                # If the current playing entry is not in the playing source's
-                # query model, we add temporarily to NP's query model so that
-                # it appears in the sidebar and display page while the track
-                # is playing. The track is removed from both views when it
-                # stops playing (in the "song_changed_callback").
-                iter = Gtk.TreeIter()
-                if playing_entry and not model.entry_to_iter(playing_entry, iter):
-                        model.add_entry(playing_entry, 0)
-                        signals.append((player.connect(
-                                                "playing-song-changed",
-                                                self.song_changed_callback,
-                                                False),
-                                        player))
+                if playing_source:
+                        self.__playing_source = playing_source
+                        self.__playing_source_model = \
+                                playing_source.get_property("query-model")
+                        self.clear()    # We call clear to create the db.
+                        self.populate_nowplaying(playing_source, True)
+                        model = self.get_property("query-model")
+                        playing_entry = player.get_playing_entry()
+                        # If the playing entry is not in the playing source's
+                        # model (e.g., if the user clicked on another selection
+                        # before activating the plugin), we add it to NP's 
+                        # model to make it appear in the sidebar. We remove
+                        # it when it stops playing (in "song_changed_callback").
+                        iter = Gtk.TreeIter()
+                        if playing_entry and not model.entry_to_iter(playing_entry, iter):
+                                model.add_entry(playing_entry, 0)
+                                signals.append((player.connect(
+                                                        "playing-song-changed",
+                                                        self.song_changed_callback,
+                                                        False),
+                                                player))
                         self.update_titles()
 
 
@@ -176,8 +180,7 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 # Disconnect from signals
                 for signal_id, signal_emitter in self.__signals:
                         signal_emitter.disconnect(signal_id)
-                for signal_id, signal_emitter in self.__playing_source_signals:
-                        signal_emitter.disconnect(signal_id)
+                self.disconnect_source_signals()
 
                 shell = self.get_property("shell")
                 # Remove sidebar
@@ -402,7 +405,29 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                         entry_to_play = model.iter_to_entry(iter)
                 player.play_entry(entry_to_play, self.__playing_source)
 
+        # Self-explanatory. Called both when NowPlaying is deactivated
+        # and when a new source is selected to play.
+        def disconnect_source_signals(self):
+                for signal_id, emiter in self.__playing_source_signals:
+                        emiter.disconnect(signal_id)
+                self.__playing_source_signals = []
 
+        # Populates NowPlaying's query model when the plugin is activated
+        # and everytime something new is selected to play (called from
+        # source_changed_callback)
+        def populate_nowplaying(self, new_source, source_is_new):
+                query_model = self.get_property("query-model")
+                query_model.copy_contents(self.__playing_source_model)
+                shell = self.get_property("shell")
+                lib_source = shell.get_property("library-source")
+                if new_source == lib_source:
+                        new_source.set_property("query-model", query_model)
+                        self.__source_is_lib = True
+                else:
+                        self.__source_is_lib = False
+                if source_is_new: # Connect only if new source is new
+                        self.connect_signals_for_control(new_source)
+        
         #####################################################################
         #                        SIGNAL CALLBACKS                           #
         #####################################################################
@@ -462,30 +487,15 @@ class NowPlayingSource(RB.StaticPlaylistSource):
 
                 # If new source is different
                 if source_is_new:
-                        # Disconnect from signals
-                        for signal_id, emiter in self.__playing_source_signals:
-                                emiter.disconnect(signal_id)
-                        self.__playing_source_signals = []
+                        self.disconnect_source_signals()
                         # Set new data
                         self.__playing_source = new_source
                         self.__playing_source_model = \
                                 new_source.get_property("query-model")
 
                 if new_source.get_entry_view() and self.__playing_source_model:
-                        # Clear current selection
                         self.clear()
-                        # Add new entries
-                        query_model = self.get_property("query-model")
-                        query_model.copy_contents(self.__playing_source_model)
-                        shell = self.get_property("shell")
-                        lib_source = shell.get_property("library-source")
-                        if new_source == lib_source:
-                                new_source.set_property("query-model", query_model)
-                                self.__source_is_lib = True
-                        else:
-                                self.__source_is_lib = False
-                        if source_is_new: # Connect only if new source is new
-                                self.connect_signals_for_control(new_source)
+                        self.populate_nowplaying(new_source, source_is_new)
                 self.update_titles()
 
         # Callback to the "row-inserted" signal of the playing source's query
