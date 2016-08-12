@@ -346,7 +346,6 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                         self.get_property("db"))
                 self.set_query_model(new_model)
                 self.__sidebar.set_model(new_model)
-                self.update_titles()
 
         # Connects to the relevant signals when a new source is selected to
         # play (called by "source_changed_callback"). FIXME - the name is
@@ -390,6 +389,7 @@ class NowPlayingSource(RB.StaticPlaylistSource):
         # entry with one from NP's query model when returning from stop without
         # changing the playing source.
         def replace_selection(self, player):
+                # FIXME: Replace only if models are different.
                 # FIXME: I'm complicating things: just start
                 # playing from the top of the playlist.
                 bar_entries = self.__sidebar.get_selected_entries()
@@ -477,7 +477,6 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                         # it the next time playback changes, because we don't
                         # want to force start playback when not supposed to
                         # (the method has a 'player.play()' statement).
-                        # FIXME: Replace only if models are different.
                         self.__ignore_selection = True
                         return
 
@@ -574,7 +573,6 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 if not iter:   # The query-model of the source has not yet been
                         return  # updated.
                 self.__ignore_selection = False
-                # Clear current selection
                 self.clear()
                 # Add new entries
                 query_model = self.get_property("query-model")
@@ -595,7 +593,6 @@ class NowPlayingSource(RB.StaticPlaylistSource):
         def playing_source_entry_activated(self, view, entry):
                 print("ENTRY ACTIVATED")
                 self.__ignore_selection = False
-                 # Clear current selection
                 self.clear()
                 # Add new entries
                 source = self.__playing_source
@@ -634,8 +631,7 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 self.__playing_source.get_entry_view().set_state(state)
 
                 # Scroll to playing entry.
-                # FIXME: Scroll only if it isn't visible.
-                # FIXME: Stop auto scrolling after adding 'Scroll to playing'
+                # FIXME: Scroll only if the entry isn't visible.
                 playing_entry = player.get_playing_entry()
                 if playing_entry:
                         entry_view.scroll_to_entry(playing_entry)
@@ -662,6 +658,7 @@ class NowPlayingSource(RB.StaticPlaylistSource):
         # Callback to the clear action of the context menus.
         def clear_callback(self, action, data):
                 self.clear()
+                self.update_titles()
                 player = self.get_property("shell").get_property("shell-player")
                 player.stop()
 
