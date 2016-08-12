@@ -34,6 +34,7 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                 self.__playing_source = None
                 self.__playing_source_signals = []
                 self.__signals = []
+                self._actions = []
                 self.__filter = None
                 self.__source_is_lib = False
                 self.__song_count = 0
@@ -87,6 +88,7 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                         action = Gio.SimpleAction(name=entry[0])
                         action.connect("activate", *entry[1:])
                         app.add_action(action)
+                        self._actions.append(entry[0])
 
                 # Create lib browser popup NP entries
                 link = Gio.Menu()
@@ -171,23 +173,26 @@ class NowPlayingSource(RB.StaticPlaylistSource):
                         return
 
                 print("DEACTIVATING")
-                # Remove menu action
                 app = Gio.Application.get_default()
+                shell = self.get_property("shell")
+
+                # Remove actions
                 app.remove_action('add-to-now-playing')
-                app.remove_plugin_menu_item('browser-popup', 'add-to-np')
-                # TODO: Remove the remaining actions.
+                for action in self._actions:
+                        app.remove_action(action)
+                self._actions = []
 
                 # Disconnect from signals
                 for signal_id, signal_emitter in self.__signals:
                         signal_emitter.disconnect(signal_id)
                 self.disconnect_source_signals()
 
-                shell = self.get_property("shell")
-                # Remove sidebar
+                # Remove UI
+                app.remove_plugin_menu_item('browser-popup', 'add-to-np-link')
                 shell.remove_widget (self.__sidebar,
                         RB.ShellUILocation.RIGHT_SIDEBAR)
-                # Remove display page
                 shell.get_property("display-page-model").remove_page(self)
+
                 # Restore playing source's query_model
                 if self.__playing_source and self.__playing_source_model:
                         self.__playing_source.set_property(
